@@ -21,7 +21,7 @@
 dsh plugin --profile web add @coolwzy/dsh-skill-map
 ```
 
-npm 版本发布之前，可以先用 [Releases](https://github.com/coolwyz/dsh-skill-map/releases) 里的预构建 tarball 装，效果相同且不需要本地构建：
+每次发布也会把构建好的包附在 [Releases](https://github.com/coolwyz/dsh-skill-map/releases) 里，内容相同、不需要本地构建（后续版本把 URL 里的 tag 换掉即可）：
 
 ```sh
 dsh plugin --profile web add https://github.com/coolwyz/dsh-skill-map/releases/download/v0.1.0/coolwyz-dsh-skill-map-0.1.0.tgz

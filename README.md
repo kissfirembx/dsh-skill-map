@@ -21,7 +21,7 @@ DSH skill map: browse every loaded skill through your own categories in a right-
 dsh plugin --profile web add @coolwzy/dsh-skill-map
 ```
 
-Until the npm release is live, the prebuilt tarball on [Releases](https://github.com/coolwyz/dsh-skill-map/releases) installs the same thing with no build step:
+Every release also ships the built package as a tarball on [Releases](https://github.com/coolwyz/dsh-skill-map/releases) — same content, no build step (bump the tag in the URL for later releases):
 
 ```sh
 dsh plugin --profile web add https://github.com/coolwyz/dsh-skill-map/releases/download/v0.1.0/coolwyz-dsh-skill-map-0.1.0.tgz
