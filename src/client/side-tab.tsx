@@ -12,7 +12,7 @@
  * the right sidebar simply never runs this and the plugin stays absent instead
  * of failing boot.
  *
- * @module @coolwyz/dsh-skill-map/client
+ * @module @coolwzy/dsh-skill-map/client
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type { SkillMapApi } from './api.ts'

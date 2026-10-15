@@ -18,7 +18,7 @@
 ## 安装
 
 ```sh
-dsh plugin --profile web add @coolwyz/dsh-skill-map
+dsh plugin --profile web add @coolwzy/dsh-skill-map
 ```
 
 npm 版本发布之前，可以先用 [Releases](https://github.com/coolwyz/dsh-skill-map/releases) 里的预构建 tarball 装，效果相同且不需要本地构建：

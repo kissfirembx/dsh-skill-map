@@ -10,7 +10,7 @@
  */
 import { clientBundle } from './build/tsdown.client.ts'
 
-export default clientBundle('@coolwyz/dsh-skill-map', ['src/index.ts'], {
+export default clientBundle('@coolwzy/dsh-skill-map', ['src/index.ts'], {
   libExternal: [
     '@deepseek-ai/dsh-client-locale',
     '@deepseek-ai/dsh-client-ui-slots',
