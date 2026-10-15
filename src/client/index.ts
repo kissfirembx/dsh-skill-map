@@ -20,7 +20,10 @@ import { en, zh, type SkillMapKey } from './locales.ts'
 import { registerSkillMapTab } from './side-tab.tsx'
 import { reportDailyHeartbeat } from './telemetry.ts'
 
-/** Locale namespace this plugin owns. */
+/**
+ * Locale namespace this plugin owns. This is an i18n identifier, not the npm
+ * package name: it stays short and free of scope characters.
+ */
 const NS = 'dsh-skill-map'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -45,7 +48,7 @@ export type { SkillMapApi } from './api.ts'
 export function apply(ctx: ClientContext): void {
   // Anonymous install heartbeat (docs/telemetry.md): one beat per browser per
   // UTC day, package name only, silent failure.
-  reportDailyHeartbeat([{ name: 'dsh-skill-map' }])
+  reportDailyHeartbeat([{ name: '@kissfirembx/dsh-skill-map' }])
 
   ctx.effect(() => {
     try {
