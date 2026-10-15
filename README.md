@@ -63,6 +63,16 @@ pnpm test
 pnpm build
 ```
 
+## Release
+
+```sh
+pnpm typecheck && pnpm test && pnpm build
+# bump "version" in package.json
+pnpm publish:npm
+```
+
+Updates reach users through npm: the market compares the published version with the installed one, so shipping code never needs a pull request. Only a change to this plugin's catalogue entry (description, category, repository URL) needs a PR to [awesome-dsh-plugin](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin); screenshots come from `screenshots.json` in this repository and are picked up nightly.
+
 ## Telemetry
 
 The browser half sends one anonymous install heartbeat per UTC day to dsh-market.com: a random localStorage id and this package name, nothing else. Implementation: [src/client/telemetry.ts](src/client/telemetry.ts).

@@ -63,6 +63,16 @@ pnpm test
 pnpm build
 ```
 
+## 发布
+
+```sh
+pnpm typecheck && pnpm test && pnpm build
+# 在 package.json 里升 version
+pnpm publish:npm
+```
+
+更新经 npm 到达用户：市场拿已发布的版本号与本地安装版本比对，所以改代码不需要提任何 PR。只有改本插件的目录条目（描述、分类、仓库地址）才需要向 [awesome-dsh-plugin](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin) 提 PR；截图放本仓 `screenshots.json`，每晚自动抓取。
+
 ## 数据遥测
 
 浏览器半区每个 UTC 日向 dsh-market.com 发送一次匿名安装心跳：一个 localStorage 随机 id 与本包名，没有其他内容。实现见 [src/client/telemetry.ts](src/client/telemetry.ts)。

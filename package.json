@@ -49,6 +49,7 @@
   },
   "scripts": {
     "build": "tsc -b tsconfig.build.json && tsdown",
+    "publish:npm": "pnpm build && npm publish --access public --registry=https://registry.npmjs.org/",
     "prepare": "tsdown",
     "watch": "tsdown --watch",
     "test": "vitest run",
