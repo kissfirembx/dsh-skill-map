@@ -1,0 +1,12 @@
+packages:
+  - .
+
+# pnpm 11 默认 strictDepBuilds：未批准的构建脚本会让安装以 ERR_PNPM_IGNORED_BUILDS 结束。
+# 下面这些是本插件 devDependencies（@deepseek-ai SDK）传递进来的原生或可选构建，
+# 本仓的 typecheck / build / test 都不需要它们，所以显式确认跳过而不是让安装失败。
+allowBuilds:
+  '@deepseek-ai/dsh-subprocess-local': false
+  '@google/genai': false
+  koffi: false
+  node-pty: false
+  protobufjs: false
