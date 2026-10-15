@@ -2,6 +2,20 @@
   "name": "@linxin666/dsh-client-ui-skill-map",
   "description": "DSH skill map: browse every loaded skill through your own categories in a right-sidebar tab, and rename, add, delete, reorder or re-file them in place.",
   "version": "0.1.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/coolwyz/dsh-skill-map.git"
+  },
+  "homepage": "https://github.com/coolwyz/dsh-skill-map#readme",
+  "bugs": "https://github.com/coolwyz/dsh-skill-map/issues",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "skill",
+    "sidebar",
+    "plugin"
+  ],
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",

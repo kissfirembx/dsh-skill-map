@@ -7,7 +7,9 @@
 ## 能力
 
 - 通过右侧栏公开给其他插件的服务，往右侧栏贡献一个页签。
-- 把已加载的 skill 摊成分类：折叠符号、分类名、数量，默认全部折叠，展开后是纯名字列表。
+- 把已加载的 skill 摊成分类：折叠符号、分类名、数量，默认全部折叠；每个 skill 一行，描述在悬停时展开，搜索过滤时也展开。
+- 搜索 skill 名字与描述，并可一次展开或折叠全部分类。
+- 在面板自己的设置页（头部齿轮）里切换描述语言：skill 自己的原文，或 `$DSH_HOME/skill-map/descriptions.<lang>.json` 里的任一译文缓存；缓存里没有该 skill 时显示原文。
 - 在面板里新建、重命名、删除分类，并拖动排序。
 - 把 skill 拖到另一个分类，或拖回「未归类」。
 - 点击 skill 行复制 `/skill-name`，可直接粘到输入框。
@@ -15,11 +17,11 @@
 
 ## 安装
 
-本包未发布；从这个目录装进 profile，然后重启 harness。
-
 ```sh
-dsh plugin --profile web add link:<本仓路径>
+dsh plugin --profile web add @linxin666/dsh-client-ui-skill-map
 ```
+
+重启 `dsh web`，或在插件管理器里把该插件行关掉再打开，然后在右侧栏打开技能地图页签。页签需要一个暴露插件服务的右侧栏；profile 里没有 `dsh-better-sidebar` 时插件照常安装，只是不贡献任何界面。
 
 ## 配置
 

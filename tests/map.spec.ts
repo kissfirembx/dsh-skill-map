@@ -1,11 +1,17 @@
 import { describe, expect, it } from 'vitest'
-import { assembleMap, seedMapState } from '../src/core/map.ts'
-import { MAP_VERSION } from '../src/core/payload.ts'
+import { assembleMap, compactDescription, seedMapState } from '../src/core/map.ts'
+import { MAP_VERSION, MAX_DESCRIPTION_LENGTH, type SkillEntry } from '../src/core/payload.ts'
+
+/** Shorthand: an inventory entry, description optional. */
+function skill(name: string, description = ''): SkillEntry {
+  return { name, description }
+}
 
 /**
- * Assembly rules: the user map decides category order and membership, and a
+ * Assembly rules: the user map decides category order and membership, a
  * placement that no longer resolves must degrade to the unassigned bucket
- * rather than invent a category.
+ * rather than invent a category, and every listed skill carries at most one
+ * compacted description line.
  */
 describe('seedMapState', () => {
   it('carries the shipped categories and placements', () => {
@@ -19,6 +25,30 @@ describe('seedMapState', () => {
     const first = seedMapState()
     first.categories[0]!.name = 'mutated'
     expect(seedMapState().categories[0]!.name).not.toBe('mutated')
+  })
+})
+
+describe('compactDescription', () => {
+  it('flattens newlines and runs of spaces to one line', () => {
+    expect(compactDescription('one\n  two\tthree ')).toBe('one two three')
+  })
+
+  it('leaves a short description untouched', () => {
+    expect(compactDescription('short line')).toBe('short line')
+  })
+
+  it('breaks a long description on a word boundary and marks the cut', () => {
+    const long = `${'word '.repeat(80)}end`
+    const compacted = compactDescription(long)
+    expect(compacted.length).toBeLessThanOrEqual(MAX_DESCRIPTION_LENGTH + 1)
+    expect(compacted.endsWith('…')).toBe(true)
+    expect(compacted).not.toContain('  ')
+  })
+
+  it('truncates a CJK description that carries no spaces at all', () => {
+    const compacted = compactDescription('技'.repeat(MAX_DESCRIPTION_LENGTH * 2))
+    expect(compacted.endsWith('…')).toBe(true)
+    expect(compacted.length).toBe(MAX_DESCRIPTION_LENGTH + 1)
   })
 })
 
@@ -37,7 +67,7 @@ describe('assembleMap', () => {
       cwd: 'C:\\work',
       complete: true,
       mapPath: 'C:\\home\\.dsh\\skill-map\\map.json',
-      skills: ['alpha', 'zeta', 'beta', 'gamma'],
+      skills: [skill('alpha'), skill('zeta'), skill('beta'), skill('gamma')],
       state,
     })
     expect(payload.categories.map((category) => category.id)).toEqual(['b', 'a'])
@@ -46,7 +76,7 @@ describe('assembleMap', () => {
   })
 
   it('puts every unplaced skill in the unassigned bucket, name-sorted', () => {
-    const payload = assembleMap({ cwd: 'c', complete: true, mapPath: 'm', skills: ['gamma', 'beta'], state })
+    const payload = assembleMap({ cwd: 'c', complete: true, mapPath: 'm', skills: [skill('gamma'), skill('beta')], state })
     expect(payload.unassigned).toEqual(['beta', 'gamma'])
     expect(payload.total).toBe(2)
   })
@@ -56,7 +86,7 @@ describe('assembleMap', () => {
       cwd: 'c',
       complete: true,
       mapPath: 'm',
-      skills: ['alpha'],
+      skills: [skill('alpha')],
       state: { ...state, categories: [{ id: 'b', name: '乙' }] },
     })
     expect(payload.categories[0]?.skills).toEqual([])
@@ -64,9 +94,10 @@ describe('assembleMap', () => {
   })
 
   it('never lists a skill twice, even when the inventory repeats one', () => {
-    const payload = assembleMap({ cwd: 'c', complete: true, mapPath: 'm', skills: ['alpha', 'alpha'], state })
+    const payload = assembleMap({ cwd: 'c', complete: true, mapPath: 'm', skills: [skill('alpha'), skill('alpha', 'second')], state })
     const listed = [...payload.categories.flatMap((category) => category.skills), ...payload.unassigned]
     expect(listed).toEqual(['alpha'])
+    expect(payload.total).toBe(1)
   })
 
   it('carries the completeness flag and map path through', () => {
@@ -74,5 +105,48 @@ describe('assembleMap', () => {
     expect(payload.complete).toBe(false)
     expect(payload.mapPath).toBe('M')
     expect(payload.total).toBe(0)
+  })
+
+  it('serves one description per skill, placed ones included', () => {
+    const payload = assembleMap({
+      cwd: 'c',
+      complete: true,
+      mapPath: 'm',
+      skills: [skill('alpha', 'drafts copy'), skill('zeta', 'multi\nline copy'), skill('beta')],
+      state,
+    })
+    expect(payload.descriptions).toEqual({
+      alpha: 'drafts copy',
+      zeta: 'multi line copy',
+    })
+  })
+
+  it('omits the inventory placeholder and empty descriptions', () => {
+    const payload = assembleMap({
+      cwd: 'c',
+      complete: true,
+      mapPath: 'm',
+      skills: [skill('alpha', '(no description)'), skill('beta', '   ')],
+      state,
+    })
+    expect(payload.descriptions).toEqual({})
+  })
+
+  it('compacts an over-long description before serving it', () => {
+    const payload = assembleMap({
+      cwd: 'c',
+      complete: true,
+      mapPath: 'm',
+      skills: [skill('alpha', 'x'.repeat(MAX_DESCRIPTION_LENGTH * 3))],
+      state,
+    })
+    expect(payload.descriptions.alpha?.endsWith('…')).toBe(true)
+  })
+
+  it('carries translations only when a language cache has rows', () => {
+    const base = { cwd: 'c', complete: true, mapPath: 'm', skills: [skill('alpha', 'A')], state }
+    expect(assembleMap(base).translations).toBeUndefined()
+    expect(assembleMap({ ...base, translations: {} }).translations).toBeUndefined()
+    expect(assembleMap({ ...base, translations: { zh: { alpha: '甲' } } }).translations).toEqual({ zh: { alpha: '甲' } })
   })
 })

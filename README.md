@@ -7,7 +7,9 @@ DSH skill map: browse every loaded skill through your own categories in a right-
 ## What it does
 
 - Contributes one tab to the right sidebar, through the public service the right sidebar exposes to other plugins.
-- Shows the loaded skills as categories: a caret, a category name and a count, collapsed by default, with a flat list of skill names inside.
+- Shows the loaded skills as categories: a caret, a category name and a count, collapsed by default. A skill row is one line; its description unfolds on hover, and while a search is filtering.
+- Searches skill names and descriptions, and expands or collapses every category at once.
+- Switches the description language from the panel's own settings view (the gear in the header): the skill's own text, or any translation cache kept at `$DSH_HOME/skill-map/descriptions.<lang>.json`. A skill with no row in that cache keeps its own text.
 - Creates, renames and deletes categories from the panel, and reorders them by dragging.
 - Moves a skill between categories, or back to Unassigned, by dragging it onto the target category.
 - Copies `/skill-name` when a skill row is clicked, ready for the composer.
@@ -15,11 +17,11 @@ DSH skill map: browse every loaded skill through your own categories in a right-
 
 ## Install
 
-This package is not published; install it from this checkout and restart the harness.
-
 ```sh
-dsh plugin --profile web add link:<path-to-this-repo>
+dsh plugin --profile web add @linxin666/dsh-client-ui-skill-map
 ```
+
+Restart `dsh web`, or toggle the plugin's row in the plugin manager, then open the map tab in the right sidebar. The tab needs a right sidebar that exposes its plugin service; without one (no `dsh-better-sidebar` in the profile) the plugin stays installed and simply contributes no surface.
 
 ## Config
 

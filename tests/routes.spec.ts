@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { mkdir, readFile, rm } from 'node:fs/promises'
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
@@ -91,6 +91,20 @@ describe('skill-map routes', () => {
     expect(body.unassigned).toEqual(['alpha', 'zeta'])
     expect(body.mapPath).toBe(mapPath(dshHome))
     expect(existsSync(mapPath(dshHome))).toBe(true)
+  })
+
+  it('serves one compacted description per inventory skill', async () => {
+    const { project, routes } = await fixture()
+    const { body } = await list(routes, project)
+    expect(body.descriptions).toEqual({ alpha: 'A', zeta: 'Z' })
+  })
+
+  it('serves the language caches kept beside the map file', async () => {
+    const { project, dshHome, routes } = await fixture()
+    await mkdir(join(dshHome, 'skill-map'), { recursive: true })
+    await writeFile(join(dshHome, 'skill-map', 'descriptions.zh.json'), JSON.stringify({ alpha: '甲' }), 'utf8')
+    const { body } = await list(routes, project)
+    expect(body.translations).toEqual({ zh: { alpha: '甲' } })
   })
 
   it('keeps the user map the panel saved', async () => {

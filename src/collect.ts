@@ -17,6 +17,7 @@ import type { Dirent } from 'node:fs'
 import { readdir, readFile, stat } from 'node:fs/promises'
 import { basename, dirname, join, sep } from 'node:path'
 import { parseFrontmatter } from './frontmatter.ts'
+import { MISSING_DESCRIPTION } from './core/payload.ts'
 
 /** Display copy for each source level (the panel shows it as a badge/filter). */
 export interface SourceGroup {
@@ -157,7 +158,7 @@ async function scanSkillRoot(root: string, level: string, into: Map<string, Skil
     }
     into.set(skillName, {
       name: skillName,
-      description: parsed.description ?? '(no description)',
+      description: parsed.description ?? MISSING_DESCRIPTION,
       whenToUse: parsed.whenToUse,
       provider: 'filesystem',
       level,

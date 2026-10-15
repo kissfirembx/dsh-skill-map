@@ -14,6 +14,7 @@ import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
 import { isSkillMapAllowed } from './access.ts'
 import { collectSkills, findProjectRoot, type CollectOptions } from './collect.ts'
 import { assembleMap } from './core/map.ts'
+import { readTranslations } from './description-cache.ts'
 import { readJsonBody, writeJson } from './http.ts'
 import { mapPath, readMapState, sanitizeSave, writeMapState } from './map-store.ts'
 
@@ -117,12 +118,16 @@ export function makeRoutes(ctx: Context, deps: SkillMapRoutesDeps): WebRoute[] {
           // A fresh map is materialised on first open so the file the panel
           // reports is always the file the user can edit by hand.
           if (seeded) await writeMapState(mapFile, state).catch((error: unknown) => { logger.warn(error) })
+          // Language caches are user-owned files beside the map; an unreadable
+          // one costs a language, never the list.
+          const translations = await readTranslations(dshHome).catch(() => ({}))
           writeJson(res, 200, assembleMap({
             cwd,
             complete,
             mapPath: mapFile,
-            skills: skills.map((skill) => skill.name),
+            skills: skills.map((skill) => ({ name: skill.name, description: skill.description })),
             state,
+            translations,
           }))
         } catch (error) {
           logger.warn(error)
