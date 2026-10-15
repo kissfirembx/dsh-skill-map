@@ -1,5 +1,5 @@
 {
-  "name": "@kissfirembx/dsh-skill-map",
+  "name": "dsh-skill-map",
   "description": "DSH skill map: browse every loaded skill through your own categories in a right-sidebar tab, and rename, add, delete, reorder or re-file them in place.",
   "version": "0.1.0",
   "repository": {
