@@ -99,4 +99,4 @@ function applyImpl(ctx: Context, config?: Config): void {
  * profile, so the second host apply must be a no-op instead of re-registering
  * the same routes and failing the boot.
  */
-export const apply = mountOnce('dsh-skill-map', applyImpl)
+export const apply = mountOnce('@kissfire/dsh-skill-map', applyImpl)
