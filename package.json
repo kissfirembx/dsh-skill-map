@@ -87,5 +87,8 @@
     "README.md",
     "README.zh.md"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "license": "BSD-3-Clause"
 }
