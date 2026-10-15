@@ -21,6 +21,12 @@
 dsh plugin --profile web add @coolwyz/dsh-skill-map
 ```
 
+npm 版本发布之前，可以先用 [Releases](https://github.com/coolwyz/dsh-skill-map/releases) 里的预构建 tarball 装，效果相同且不需要本地构建：
+
+```sh
+dsh plugin --profile web add https://github.com/coolwyz/dsh-skill-map/releases/download/v0.1.0/coolwyz-dsh-skill-map-0.1.0.tgz
+```
+
 重启 `dsh web`，或在插件管理器里把该插件行关掉再打开，然后在右侧栏打开技能地图页签。页签需要一个暴露插件服务的右侧栏；profile 里没有 `dsh-better-sidebar` 时插件照常安装，只是不贡献任何界面。
 
 ## 配置

@@ -21,6 +21,12 @@ DSH skill map: browse every loaded skill through your own categories in a right-
 dsh plugin --profile web add @coolwyz/dsh-skill-map
 ```
 
+Until the npm release is live, the prebuilt tarball on [Releases](https://github.com/coolwyz/dsh-skill-map/releases) installs the same thing with no build step:
+
+```sh
+dsh plugin --profile web add https://github.com/coolwyz/dsh-skill-map/releases/download/v0.1.0/coolwyz-dsh-skill-map-0.1.0.tgz
+```
+
 Restart `dsh web`, or toggle the plugin's row in the plugin manager, then open the map tab in the right sidebar. The tab needs a right sidebar that exposes its plugin service; without one (no `dsh-better-sidebar` in the profile) the plugin stays installed and simply contributes no surface.
 
 ## Config
