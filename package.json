@@ -4,10 +4,10 @@
   "version": "0.1.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/coolwyz/dsh-skill-map.git"
+    "url": "git+https://github.com/kissfirembx/dsh-skill-map.git"
   },
-  "homepage": "https://github.com/coolwyz/dsh-skill-map#readme",
-  "bugs": "https://github.com/coolwyz/dsh-skill-map/issues",
+  "homepage": "https://github.com/kissfirembx/dsh-skill-map#readme",
+  "bugs": "https://github.com/kissfirembx/dsh-skill-map/issues",
   "keywords": [
     "dsh",
     "dsh-plugin",

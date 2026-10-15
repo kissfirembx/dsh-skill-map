@@ -21,10 +21,10 @@
 dsh plugin --profile web add dsh-skill-map
 ```
 
-每次发布也会把构建好的包附在 [Releases](https://github.com/coolwyz/dsh-skill-map/releases) 里，内容相同、不需要本地构建（后续版本把 URL 里的 tag 换掉即可）：
+每次发布也会把构建好的包附在 [Releases](https://github.com/kissfirembx/dsh-skill-map/releases) 里，内容相同、不需要本地构建（后续版本把 URL 里的 tag 换掉即可）：
 
 ```sh
-dsh plugin --profile web add https://github.com/coolwyz/dsh-skill-map/releases/download/v0.1.0/dsh-skill-map-0.1.0.tgz
+dsh plugin --profile web add https://github.com/kissfirembx/dsh-skill-map/releases/download/v0.1.0/dsh-skill-map-0.1.0.tgz
 ```
 
 重启 `dsh web`，或在插件管理器里把该插件行关掉再打开，然后在右侧栏打开技能地图页签。页签需要一个暴露插件服务的右侧栏；profile 里没有 `dsh-better-sidebar` 时插件照常安装，只是不贡献任何界面。
