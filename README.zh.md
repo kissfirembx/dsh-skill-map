@@ -18,7 +18,7 @@
 ## 安装
 
 ```sh
-dsh plugin --profile web add @linxin666/dsh-client-ui-skill-map
+dsh plugin --profile web add @coolwyz/dsh-skill-map
 ```
 
 重启 `dsh web`，或在插件管理器里把该插件行关掉再打开，然后在右侧栏打开技能地图页签。页签需要一个暴露插件服务的右侧栏；profile 里没有 `dsh-better-sidebar` 时插件照常安装，只是不贡献任何界面。

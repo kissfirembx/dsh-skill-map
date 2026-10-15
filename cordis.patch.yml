@@ -4,4 +4,4 @@
 # `dsh plugin --profile web add link:<repo>/packages/dsh-skill-map`.
 - insert:
     - id: ui-skill-map
-      name: '@linxin666/dsh-client-ui-skill-map'
+      name: '@coolwyz/dsh-skill-map'

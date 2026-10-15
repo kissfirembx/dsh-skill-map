@@ -18,7 +18,7 @@ DSH skill map: browse every loaded skill through your own categories in a right-
 ## Install
 
 ```sh
-dsh plugin --profile web add @linxin666/dsh-client-ui-skill-map
+dsh plugin --profile web add @coolwyz/dsh-skill-map
 ```
 
 Restart `dsh web`, or toggle the plugin's row in the plugin manager, then open the map tab in the right sidebar. The tab needs a right sidebar that exposes its plugin service; without one (no `dsh-better-sidebar` in the profile) the plugin stays installed and simply contributes no surface.
