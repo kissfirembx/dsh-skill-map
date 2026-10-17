@@ -14,11 +14,23 @@ import type { BetterSidebarFace, BetterSidebarTabDescriptor } from '../src/clien
  * Seat 2 replaced the two `rightbar` attempts, so what matters here is that it
  * goes through the *keyed* slot `sidebar.right.pane.tab` — the one where an
  * outside plugin owns its own key and nothing else is displaced.
+ *
+ * The seats also move back down: disabling `dsh-better-sidebar` disposes its
+ * service, and cordis unloads the `ctx.inject` fiber with it. These specs pin
+ * that the cleanup puts the official seat back up, so the entry does not have to
+ * wait for a full plugin restart (the reported field symptom).
  */
 
 interface SlotCall {
   options: Record<string, unknown>
   releases: number
+}
+
+interface Injectable {
+  running: boolean
+  cleanup: (() => void) | undefined
+  run: () => void
+  stop: () => void
 }
 
 function fakeCtx(options: {
@@ -27,18 +39,27 @@ function fakeCtx(options: {
 } = {}): {
   ctx: ClientContext
   tabs: BetterSidebarTabDescriptor[]
+  releases: number[]
   slots: SlotCall[]
   definitions: Array<Record<string, unknown>>
   opened: string[]
   provide(service: BetterSidebarFace): void
+  withdraw(): void
+  dropOfficialRightSidebar(): void
   fire(): void
 } {
   const tabs: BetterSidebarTabDescriptor[] = []
+  const releases: number[] = []
   const slots: SlotCall[] = []
   const definitions: Array<Record<string, unknown>> = []
   const opened: string[] = []
   const pending: Array<() => void> = []
+  /** The inject fibers that wait on `betterSidebar`; cordis unloads them on withdrawal. */
+  const sidebarFibers: Injectable[] = []
+  /** The inject fibers that wait on the official right Sidebar service. */
+  const rightFibers: Injectable[] = []
   let service = options.sidebar
+  let official = options.officialRightSidebar === true
 
   const slotFace = {
     register(callOptions: Record<string, unknown>) {
@@ -59,47 +80,69 @@ function fakeCtx(options: {
     },
   }
 
+  const tabRegistry = {
+    register(definition: Record<string, unknown>) {
+      definitions.push(definition)
+      return () => {}
+    },
+  }
+  const rightController = {
+    openTab(kind: string) {
+      opened.push(kind)
+    },
+  }
+
   const inner = {
     get: () => service,
     inject: () => () => {},
     slots: slotFace,
-    sidebarRightTabs: options.officialRightSidebar === true
-      ? {
-          register(definition: Record<string, unknown>) {
-            definitions.push(definition)
-            return () => {}
-          },
-        }
-      : undefined,
-    sidebarRight: options.officialRightSidebar === true
-      ? {
-          openTab(kind: string) {
-            opened.push(kind)
-          },
-        }
-      : undefined,
+    get sidebarRightTabs() {
+      return official ? tabRegistry : undefined
+    },
+    get sidebarRight() {
+      return official ? rightController : undefined
+    },
   }
 
   const ctx = {
     get: (name: string) => (name === 'betterSidebar' ? service : undefined),
     inject: (names: string[], callback: (inner: unknown) => unknown) => {
-      let cleanup: unknown
-      const run = (): void => {
-        cleanup = callback(inner)
+      const body: Injectable = {
+        running: false,
+        cleanup: undefined,
+        run: () => {
+          const result = callback(inner)
+          body.cleanup = typeof result === 'function' ? result as () => void : undefined
+          body.running = true
+        },
+        stop: () => {
+          if (!body.running) return
+          body.running = false
+          const cleanup = body.cleanup
+          body.cleanup = undefined
+          cleanup?.()
+        },
       }
       const ready = names.every((name) => {
         if (name === 'slots') return true
         if (name === 'betterSidebar') return service !== undefined
-        if (name === 'sidebarRightTabs') return options.officialRightSidebar === true
+        if (name === 'sidebarRightTabs') return official
         return true
       })
-      if (ready) run()
-      else pending.push(run)
-      return {
-        dispose: () => {
-          if (typeof cleanup === 'function') (cleanup as () => void)()
-        },
+      if (names.includes('betterSidebar')) {
+        // Sidebar injects are driven by provide/withdraw, the way cordis
+        // unloads and reloads a fiber when the service's epoch changes.
+        sidebarFibers.push(body)
+        if (ready) body.run()
+      } else if (names.includes('sidebarRightTabs')) {
+        rightFibers.push(body)
+        if (ready) body.run()
+      } else if (ready) {
+        body.run()
+      } else {
+        pending.push(body.run)
       }
+      return { dispose: body.stop }
     },
     slots: slotFace,
   } as unknown as ClientContext
@@ -107,11 +150,29 @@ function fakeCtx(options: {
   return {
     ctx,
     tabs,
+    releases,
     slots,
     definitions,
     opened,
     provide(next) {
+      // A service change is an epoch change: cordis unloads the fiber (running
+      // the body's cleanup) and reloads it with the new service.
       service = next
+      for (const fiber of sidebarFibers) {
+        fiber.stop()
+        fiber.run()
+      }
+      for (const run of pending.splice(0)) run()
+    },
+    withdraw() {
+      // Plugin disabled: the service disappears and its inject fibers unload.
+      service = undefined
+      for (const fiber of sidebarFibers) fiber.stop()
+    },
+    dropOfficialRightSidebar() {
+      // The official right Sidebar unloads: its tab registry and our type go too.
+      official = false
+      for (const fiber of rightFibers) fiber.stop()
     },
     fire() {
       for (const run of pending.splice(0)) run()
@@ -119,11 +180,15 @@ function fakeCtx(options: {
   }
 }
 
-function fakeSidebar(into: BetterSidebarTabDescriptor[]): BetterSidebarFace {
+function fakeSidebar(into: BetterSidebarTabDescriptor[], releases: number[] = []): BetterSidebarFace {
   return {
     registerTab(descriptor) {
       into.push(descriptor)
-      return () => {}
+      const index = releases.length
+      releases.push(0)
+      return () => {
+        releases[index] += 1
+      }
     },
   }
 }
@@ -154,11 +219,11 @@ describe('registerSurface', () => {
   })
 
   it('prefers the better-sidebar tab when its service is up', () => {
-    const tabs: BetterSidebarTabDescriptor[] = []
-    const h = fakeCtx({ sidebar: fakeSidebar(tabs), officialRightSidebar: true })
+    const h = fakeCtx({ officialRightSidebar: true })
+    h.provide(fakeSidebar(h.tabs))
     registerSurface(h.ctx, api)
-    expect(tabs).toHaveLength(1)
-    expect(tabs[0]?.single).toBe(true)
+    expect(h.tabs).toHaveLength(1)
+    expect(h.tabs[0]?.single).toBe(true)
     // Two ways into the same panel would be a bug, so nothing else registers.
     expect(h.slots).toEqual([])
     expect(h.definitions).toEqual([])
@@ -169,11 +234,74 @@ describe('registerSurface', () => {
     registerSurface(h.ctx, api)
     expect(h.slots).toHaveLength(2)
 
-    const tabs: BetterSidebarTabDescriptor[] = []
-    h.provide(fakeSidebar(tabs))
-    h.fire()
+    h.provide(fakeSidebar(h.tabs))
 
-    expect(tabs).toHaveLength(1)
+    expect(h.tabs).toHaveLength(1)
     expect(h.slots.map((call) => call.releases)).toEqual([1, 1])
+  })
+
+  it('restores the official seat when the better sidebar is disabled', () => {
+    const h = fakeCtx({ officialRightSidebar: true })
+    h.provide(fakeSidebar(h.tabs, h.releases))
+    registerSurface(h.ctx, api)
+    expect(h.tabs).toHaveLength(1)
+    expect(h.slots).toEqual([])
+
+    h.withdraw()
+
+    // Seat 1 died with its host; seat 2 is back, with its keyed tab.
+    expect(h.releases).toEqual([1])
+    expect(h.slots.map((call) => call.options.name)).toEqual(['sidebar.panellist', 'main', 'sidebar.right.pane.tab'])
+    expect(h.definitions).toHaveLength(1)
+    expect(h.opened).toEqual(['kissfire-skill-map'])
+  })
+
+  it('retakes seat 1 when the better sidebar comes back', () => {
+    const h = fakeCtx({ officialRightSidebar: true })
+    registerSurface(h.ctx, api)
+    expect(h.slots).toHaveLength(3)
+
+    h.provide(fakeSidebar(h.tabs, h.releases))
+    expect(h.tabs).toHaveLength(1)
+    expect(h.releases).toEqual([0])
+    expect(h.slots.map((call) => call.releases)).toEqual([1, 1, 1])
+
+    h.withdraw()
+    expect(h.releases).toEqual([1])
+    // The official seat went back up, and its tab body replaced the fallback.
+    expect(h.slots).toHaveLength(6)
+    expect(h.slots.slice(3).map((call) => call.releases)).toEqual([1, 1, 0])
+
+    h.provide(fakeSidebar(h.tabs, h.releases))
+    expect(h.tabs).toHaveLength(2)
+    expect(h.releases).toEqual([1, 0])
+    expect(h.slots.slice(3).map((call) => call.releases)).toEqual([1, 1, 1])
+  })
+
+  it('falls back to the central panel when the official right sidebar goes away', () => {
+    const h = fakeCtx({ officialRightSidebar: true })
+    registerSurface(h.ctx, api)
+    expect(h.slots.map((call) => call.options.name))
+      .toEqual(['sidebar.panellist', 'main', 'sidebar.right.pane.tab'])
+
+    h.dropOfficialRightSidebar()
+
+    // The tab type and body died with the sidebar; the central panel takes over
+    // rather than leaving the plugin with no seat until a restart.
+    expect(h.slots[2]?.releases).toBe(1)
+    expect(h.slots.slice(3).map((call) => call.options.name)).toEqual(['sidebar.panellist', 'main'])
+  })
+
+  it('does not restore the fallback after the whole surface is disposed', () => {
+    const h = fakeCtx()
+    h.provide(fakeSidebar(h.tabs, h.releases))
+    const dispose = registerSurface(h.ctx, api)
+    expect(h.tabs).toHaveLength(1)
+
+    dispose()
+    h.withdraw()
+
+    expect(h.slots).toEqual([])
+    expect(h.releases).toEqual([1])
   })
 })

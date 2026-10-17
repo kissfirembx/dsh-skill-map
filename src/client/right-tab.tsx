@@ -104,11 +104,18 @@ function readSlots(ctx: unknown): SlotFace | undefined {
  * @returns disposer releasing the tab type, its body and any fallback seat.
  */
 export function registerRightTab(ctx: ClientContext, api: SkillMapApi): () => void {
+  let stopped = false
   let disposeMain: (() => void) | undefined
+
+  /** Put the central-panel seat back up (the last resort, never duplicated). */
+  const mountMain = (): void => {
+    if (stopped || disposeMain !== undefined) return
+    disposeMain = registerMainPanel(ctx, api)
+  }
 
   // Seat of last resort, first: a profile without the official right Sidebar must
   // still leave the plugin reachable.
-  disposeMain = registerMainPanel(ctx, api)
+  mountMain()
 
   const handle = ctx.inject(['slots', 'sidebarRightTabs'], (inner) => {
     const tabs = readTabRegistry(inner)
@@ -165,10 +172,15 @@ export function registerRightTab(ctx: ClientContext, api: SkillMapApi): () => vo
 
     return () => {
       for (const dispose of disposers.splice(0)) dispose()
+      // The official right Sidebar went away (disabled or reloaded): its tab
+      // registry and our type died with it, so the central panel takes over
+      // again instead of leaving the plugin with no seat until a restart.
+      mountMain()
     }
   })
 
   return () => {
+    stopped = true
     disposeMain?.()
     disposeMain = undefined
     void (handle as { dispose?: () => void } | undefined)?.dispose?.()
