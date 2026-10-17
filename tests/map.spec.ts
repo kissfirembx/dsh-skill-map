@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { assembleMap, compactDescription, seedMapState } from '../src/core/map.ts'
+import { fingerprint } from '../src/core/fingerprint.ts'
 import { MAP_VERSION, MAX_DESCRIPTION_LENGTH, type SkillEntry } from '../src/core/payload.ts'
 
 /** Shorthand: an inventory entry, description optional. */
@@ -148,5 +149,169 @@ describe('assembleMap', () => {
     expect(assembleMap(base).translations).toBeUndefined()
     expect(assembleMap({ ...base, translations: {} }).translations).toBeUndefined()
     expect(assembleMap({ ...base, translations: { zh: { alpha: '甲' } } }).translations).toEqual({ zh: { alpha: '甲' } })
+  })
+})
+
+/**
+ * The resting row carries a summary and the open row carries an origin line, so
+ * assembly has to serve both beside the full description — and stay silent for a
+ * skill whose inventory entry says nothing about where it came from.
+ */
+describe('summaries and origins', () => {
+  const state = { version: MAP_VERSION, categories: [{ id: 'a', name: '甲' }], assignments: {} }
+
+  it('serves a one-sentence summary beside the full description', () => {
+    const payload = assembleMap({
+      cwd: 'c',
+      complete: true,
+      mapPath: 'm',
+      skills: [skill('alpha', 'Runs the tests. Then it writes a long report that keeps going.')],
+      state,
+    })
+    expect(payload.summaries?.alpha).toBe('Runs the tests.')
+    expect(payload.descriptions?.alpha).toBe('Runs the tests. Then it writes a long report that keeps going.')
+  })
+
+  it('omits the summaries map when no description survives', () => {
+    const payload = assembleMap({ cwd: 'c', complete: true, mapPath: 'm', skills: [skill('alpha', '(no description)')], state })
+    expect(payload.summaries).toBeUndefined()
+    expect(payload.descriptions).toEqual({})
+  })
+
+  it('prefers hand-written copy over the description for both lines', () => {
+    const payload = assembleMap({
+      cwd: 'c',
+      complete: true,
+      mapPath: 'm',
+      skills: [skill('alpha', 'MUST USE when the user wants to look something up on the internet.')],
+      state,
+      overrides: { alpha: { brief: '全网调研，按平台取内容', detail: '你想知道别人怎么看一件事。' } },
+    })
+    expect(payload.summaries?.alpha).toBe('全网调研，按平台取内容')
+    expect(payload.descriptions?.alpha).toBe('你想知道别人怎么看一件事。')
+  })
+
+  it('falls back per line when an entry writes only one of them', () => {
+    const payload = assembleMap({
+      cwd: 'c',
+      complete: true,
+      mapPath: 'm',
+      skills: [skill('alpha', 'Extracts the text. Then it does more.')],
+      state,
+      overrides: { alpha: { brief: '只写了短简介' } },
+    })
+    expect(payload.summaries?.alpha).toBe('只写了短简介')
+    expect(payload.descriptions?.alpha).toBe('Extracts the text. Then it does more.')
+  })
+
+  it('reports what the copy still owes the inventory, and what it holds stale', () => {
+    const payload = assembleMap({
+      cwd: 'c',
+      complete: true,
+      mapPath: 'm',
+      skills: [skill('alpha', 'A'), skill('beta', 'B')],
+      state,
+      overrides: { beta: { brief: '乙' }, gone: { brief: '已经删掉的 skill' } },
+    })
+    expect(payload.copy?.missing).toEqual(['alpha'])
+    expect(payload.copy?.stale).toEqual(['gone'])
+    expect(payload.copy?.changed).toEqual([])
+    expect(payload.copy?.fingerprints).toEqual({ alpha: fingerprint('A') })
+  })
+
+  it('omits the coverage report when the copy matches the inventory', () => {
+    const payload = assembleMap({
+      cwd: 'c',
+      complete: true,
+      mapPath: 'm',
+      skills: [skill('alpha', 'A')],
+      state,
+      overrides: { alpha: { brief: '甲' } },
+    })
+    expect(payload.copy).toBeUndefined()
+  })
+
+  it('reports a covered skill whose description changed, with its new fingerprint', () => {
+    const payload = assembleMap({
+      cwd: 'c',
+      complete: true,
+      mapPath: 'm',
+      skills: [skill('alpha', 'A rewritten description')],
+      state,
+      overrides: { alpha: { brief: '甲', from: 'deadbeef' } },
+    })
+    expect(payload.copy?.changed).toEqual(['alpha'])
+    expect(payload.copy?.missing).toEqual([])
+    expect(payload.copy?.fingerprints.alpha).toBe(fingerprint('A rewritten description'))
+  })
+
+  it('stays quiet while the recorded fingerprint still matches', () => {
+    const payload = assembleMap({
+      cwd: 'c',
+      complete: true,
+      mapPath: 'm',
+      skills: [skill('alpha', 'Same text')],
+      state,
+      overrides: { alpha: { brief: '甲', from: fingerprint('Same text') } },
+    })
+    expect(payload.copy).toBeUndefined()
+  })
+
+  it('serves an origin for every skill that carries a source level', () => {
+    const payload = assembleMap({
+      cwd: 'c',
+      complete: true,
+      mapPath: 'm',
+      skills: [
+        { name: 'alpha', description: 'x', level: 'project-dsh', project: 'dsh-skill-map', provider: 'filesystem' },
+        { name: 'beta', description: 'y', level: 'bundled', provider: '@deepseek-ai/dsh-web-all' },
+        { name: 'gamma', description: 'z' },
+      ],
+      state,
+    })
+    expect(payload.origins).toEqual({
+      alpha: { level: 'project-dsh', project: 'dsh-skill-map' },
+      beta: { level: 'bundled', provider: '@deepseek-ai/dsh-web-all' },
+    })
+  })
+
+  it('drops blank project and provider values instead of serving empty strings', () => {
+    const payload = assembleMap({
+      cwd: 'c',
+      complete: true,
+      mapPath: 'm',
+      skills: [{ name: 'alpha', description: 'x', level: 'user-dsh', project: '', provider: '' }],
+      state,
+    })
+    expect(payload.origins).toEqual({ alpha: { level: 'user-dsh' } })
+  })
+
+  it('omits the origins map when no caller supplies a level', () => {
+    const payload = assembleMap({ cwd: 'c', complete: true, mapPath: 'm', skills: [skill('alpha', 'A')], state })
+    expect(payload.origins).toBeUndefined()
+  })
+
+  it('attaches the install ledger project to the origin', () => {
+    const payload = assembleMap({
+      cwd: 'c',
+      complete: true,
+      mapPath: 'm',
+      skills: [{ name: 'alpha', description: 'x', level: 'user-dsh' }],
+      state,
+      sources: { alpha: 'dontbesilent2025/dbskill' },
+    })
+    expect(payload.origins).toEqual({ alpha: { level: 'user-dsh', repo: 'dontbesilent2025/dbskill' } })
+  })
+
+  it('serves an origin from the ledger even when no level is known', () => {
+    const payload = assembleMap({
+      cwd: 'c',
+      complete: true,
+      mapPath: 'm',
+      skills: [skill('alpha', 'x')],
+      state,
+      sources: { alpha: 'anthropics/skills' },
+    })
+    expect(payload.origins).toEqual({ alpha: { repo: 'anthropics/skills' } })
   })
 })

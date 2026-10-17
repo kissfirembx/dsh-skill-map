@@ -22,8 +22,8 @@ import { tt } from './panel-helpers.ts'
 /** Tab id: the sidebar uses it as the pane's identity within a session. */
 export const SKILL_MAP_TAB_ID = 'skill-map'
 
-/** Row order among the right sidebar's tabs. */
-const TAB_ORDER = 50
+/** Row order among the right sidebar's tabs, and the fallback panel's icon row. */
+export const TAB_ORDER = 50
 
 /** The tab descriptor the right sidebar accepts. */
 export interface BetterSidebarTabDescriptor {
@@ -71,12 +71,25 @@ export function skillMapTabIcon(sizeOrProps: number | { size?: number }): React.
 }
 
 /** Read the right sidebar service from a context, if it exposes one. */
-function readFace(ctx: unknown): BetterSidebarFace | undefined {
+export function readFace(ctx: unknown): BetterSidebarFace | undefined {
   const get = (ctx as { get?: (name: string) => unknown } | undefined)?.get
   if (typeof get !== 'function') return undefined
   const service = get.call(ctx, 'betterSidebar') as BetterSidebarFace | undefined
   if (service === undefined || typeof service.registerTab !== 'function') return undefined
   return service
+}
+
+/** Register the tab against an already-resolved sidebar service. */
+export function registerTabOn(service: BetterSidebarFace, api: SkillMapApi): () => void {
+  return service.registerTab({
+    id: SKILL_MAP_TAB_ID,
+    title: () => tt('entry.label'),
+    description: () => tt('entry.description'),
+    icon: skillMapTabIcon,
+    order: TAB_ORDER,
+    single: true,
+    component: (): React.ReactElement => <SkillMapPanel api={api} />,
+  })
 }
 
 /**
@@ -90,15 +103,7 @@ export function registerSkillMapTab(ctx: ClientContext, api: SkillMapApi): () =>
   const handle = ctx.inject(['betterSidebar'], (inner) => {
     const service = readFace(inner)
     if (service === undefined) return
-    tabDisposer = service.registerTab({
-      id: SKILL_MAP_TAB_ID,
-      title: () => tt('entry.label'),
-      description: () => tt('entry.description'),
-      icon: skillMapTabIcon,
-      order: TAB_ORDER,
-      single: true,
-      component: (): React.ReactElement => <SkillMapPanel api={api} />,
-    })
+    tabDisposer = registerTabOn(service, api)
     return () => {
       tabDisposer?.()
       tabDisposer = undefined

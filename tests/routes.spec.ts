@@ -16,7 +16,7 @@ afterEach(async () => {
 })
 
 /** Fixture: two project skills plus an empty user home. */
-async function fixture(): Promise<{ project: string; dshHome: string; routes: WebRoute[] }> {
+async function fixture(llm?: SkillMapRoutesDeps['llm']): Promise<{ project: string; dshHome: string; agentsHome: string; routes: WebRoute[] }> {
   const base = await makeTempDir()
   tempDirs.push(base)
   const project = join(base, 'project')
@@ -33,9 +33,10 @@ async function fixture(): Promise<{ project: string; dshHome: string; routes: We
     customSkillDirs: [],
     registry: { snapshot: async () => ({ skills: [], complete: true }) },
     activeSessionCwds: () => [project],
+    ...(llm !== undefined ? { llm } : {}),
     logger: { warn: () => {} },
   }
-  return { project, dshHome, routes: makeRoutes({} as Context, deps) }
+  return { project, dshHome, agentsHome, routes: makeRoutes({} as Context, deps) }
 }
 
 /** Invoke one route by exact path. */
@@ -53,9 +54,10 @@ async function list(routes: WebRoute[], project: string): Promise<{ status: numb
 }
 
 describe('skill-map routes', () => {
-  it('registers the three documented paths', async () => {
+  it('registers the documented paths', async () => {
     const { routes } = await fixture()
-    expect(routes.map((route) => route.path).sort()).toEqual([ROUTES.list, ROUTES.save, ROUTES.health].sort())
+    expect(routes.map((route) => route.path).sort())
+      .toEqual([ROUTES.list, ROUTES.save, ROUTES.health, ROUTES.sync].sort())
   })
 
   it('refuses a non-loopback client before reading any file', async () => {
@@ -97,6 +99,94 @@ describe('skill-map routes', () => {
     const { project, routes } = await fixture()
     const { body } = await list(routes, project)
     expect(body.descriptions).toEqual({ alpha: 'A', zeta: 'Z' })
+  })
+
+  it('serves the hand-written copy kept beside the map file', async () => {
+    const { project, dshHome, routes } = await fixture()
+    await mkdir(join(dshHome, 'skill-map'), { recursive: true })
+    await writeFile(join(dshHome, 'skill-map', 'summaries.json'), JSON.stringify({
+      alpha: { brief: '甲的一句话', detail: '甲的大白话说明。' },
+    }), 'utf8')
+    const { body } = await list(routes, project)
+    // zeta has no row, so it keeps its own description for both lines.
+    expect(body.summaries).toEqual({ alpha: '甲的一句话', zeta: 'Z' })
+    expect(body.descriptions).toEqual({ alpha: '甲的大白话说明。', zeta: 'Z' })
+  })
+
+  it('reports copy coverage against the live inventory', async () => {
+    const { project, dshHome, routes } = await fixture()
+    await mkdir(join(dshHome, 'skill-map'), { recursive: true })
+    await writeFile(join(dshHome, 'skill-map', 'summaries.json'), JSON.stringify({
+      zeta: { brief: 'ζ' },
+      gone: { brief: '已经删掉的 skill' },
+    }), 'utf8')
+    const { body } = await list(routes, project)
+    // alpha is served but unwritten; `gone` is written but not served.
+    const copy = body.copy as { missing: string[]; stale: string[]; changed: string[] }
+    expect(copy.missing).toEqual(['alpha'])
+    expect(copy.stale).toEqual(['gone'])
+    expect(copy.changed).toEqual([])
+  })
+
+  it('writes auto copy for every skill that needs it', async () => {
+    const reply = JSON.stringify({
+      alpha: { brief: '甲的话', detail: '甲的大白话说明。' },
+      zeta: { brief: 'ζ的话', detail: 'ζ的大白话说明。' },
+    })
+    const llm = {
+      stream: () => (async function* () {
+        yield { type: 'text-delta', text: reply }
+      })(),
+    }
+    const { project, dshHome, routes } = await fixture(llm)
+    const { res, captured } = fakeResponse()
+    await call(routes, ROUTES.sync, fakeRequest({ method: 'POST', url: ROUTES.sync }), res)
+    expect(captured.status).toBe(200)
+    expect(captured.body).toMatchObject({ ok: true, total: 2, targets: 2, updated: 2, failed: 0 })
+
+    const auto = JSON.parse(await readFile(join(dshHome, 'skill-map', 'summaries.auto.json'), 'utf8'))
+    expect(auto.alpha.brief).toBe('甲的话')
+    expect(auto.alpha.detail).toBe('甲的大白话说明。')
+    // The recorded fingerprint is what keeps the next pass quiet.
+    expect(typeof auto.alpha.from).toBe('string')
+
+    // The list route serves them straight away, with no second sync needed.
+    const after = await list(routes, project)
+    expect(after.body.summaries).toMatchObject({ alpha: '甲的话' })
+  })
+
+  it('reports the sync action unavailable when the profile has no llm service', async () => {
+    const { routes } = await fixture()
+    const { res, captured } = fakeResponse()
+    await call(routes, ROUTES.sync, fakeRequest({ method: 'POST', url: ROUTES.sync }), res)
+    expect(captured.status).toBe(503)
+    expect(String((captured.body as { error: string }).error)).toContain('llm service')
+  })
+
+  it('names the GitHub project each skill was installed from', async () => {
+    const { project, agentsHome, routes } = await fixture()
+    await writeFile(join(agentsHome, '.skill-lock.json'), JSON.stringify({
+      version: 3,
+      skills: { alpha: { source: 'dontbesilent2025/dbskill', sourceType: 'github' } },
+    }), 'utf8')
+    const { body } = await list(routes, project)
+    // The fixture project directory is named "project", so both temp skills are
+    // project-scoped; only alpha has a ledger row.
+    expect(body.origins).toEqual({
+      alpha: { level: 'project-dsh', project: 'project', repo: 'dontbesilent2025/dbskill' },
+      zeta: { level: 'project-dsh', project: 'project' },
+    })
+  })
+
+  it('still serves the list when the ledger is unreadable', async () => {
+    const { project, agentsHome, routes } = await fixture()
+    await writeFile(join(agentsHome, '.skill-lock.json'), 'not json at all', 'utf8')
+    const { status, body } = await list(routes, project)
+    expect(status).toBe(200)
+    expect(body.origins).toEqual({
+      alpha: { level: 'project-dsh', project: 'project' },
+      zeta: { level: 'project-dsh', project: 'project' },
+    })
   })
 
   it('serves the language caches kept beside the map file', async () => {

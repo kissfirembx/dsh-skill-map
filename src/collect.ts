@@ -62,6 +62,8 @@ export interface SkillRecord {
   provider?: string
   /** Source level (see SOURCE_GROUPS). */
   level: string
+  /** Display name of the owning project (project levels) or of the custom root. */
+  project?: string
   /** Path of the SKILL.md when the skill came from the filesystem. */
   path?: string
   modelInvocable: boolean
@@ -116,7 +118,7 @@ export function findProjectRoot(cwd: string): string {
  * Symlinked entries (junctions included) are followed like real entries — the
  * user's mount intent is the content being listed.
  */
-async function scanSkillRoot(root: string, level: string, into: Map<string, SkillRecord>): Promise<void> {
+async function scanSkillRoot(root: string, level: string, into: Map<string, SkillRecord>, project?: string): Promise<void> {
   if (!existsSync(root)) return
   let entries: Dirent[]
   try {
@@ -162,6 +164,7 @@ async function scanSkillRoot(root: string, level: string, into: Map<string, Skil
       whenToUse: parsed.whenToUse,
       provider: 'filesystem',
       level,
+      ...(project !== undefined ? { project } : {}),
       path: file,
       modelInvocable: parsed.disableModelInvocation !== true,
       userInvocable: parsed.userInvocable !== false,
@@ -200,10 +203,13 @@ export async function collectSkills(options: CollectOptions): Promise<CollectRes
   )
   const scanTasks: Array<Promise<void>> = []
   for (const root of roots) {
-    scanTasks.push(scanSkillRoot(join(root, '.dsh', 'skills'), 'project-dsh', byName))
-    scanTasks.push(scanSkillRoot(join(root, '.agents', 'skills'), 'project-agents', byName))
+    // A project skill is labelled with the project that owns it, so the row can
+    // say which project a skill belongs to instead of just "project".
+    const project = workspaceName(root)
+    scanTasks.push(scanSkillRoot(join(root, '.dsh', 'skills'), 'project-dsh', byName, project))
+    scanTasks.push(scanSkillRoot(join(root, '.agents', 'skills'), 'project-agents', byName, project))
   }
-  for (const dir of customSkillDirs ?? []) scanTasks.push(scanSkillRoot(dir, 'custom', byName))
+  for (const dir of customSkillDirs ?? []) scanTasks.push(scanSkillRoot(dir, 'custom', byName, workspaceName(dir)))
   scanTasks.push(scanSkillRoot(join(dshHome, 'skills'), 'user-dsh', byName))
   scanTasks.push(scanSkillRoot(join(agentsHome, 'skills'), 'user-agents', byName))
   await Promise.all(scanTasks)

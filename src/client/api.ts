@@ -10,7 +10,21 @@ const API = {
   list: '/api/dsh-skill-map/list',
   save: '/api/dsh-skill-map/save',
   health: '/api/dsh-skill-map/health',
+  sync: '/api/dsh-skill-map/sync',
 } as const
+
+/** Body of POST /api/dsh-skill-map/sync. */
+export interface SyncResponse {
+  ok: true
+  /** Skills in the inventory the sync pass looked at. */
+  total: number
+  /** How many of them needed copy (no row at all, or a row whose skill changed). */
+  targets: number
+  /** Targets the model answered for. */
+  updated: number
+  /** Targets it skipped or answered unusably. */
+  failed: number
+}
 
 /** Body of GET /api/dsh-skill-map/health. */
 export interface HealthPayload {
@@ -42,6 +56,11 @@ export class SkillMapApi {
   /** Read the route-family health (skill and category counts, map file path). */
   async health(): Promise<HealthPayload> {
     return this.request<HealthPayload>(API.health)
+  }
+
+  /** Ask the host to write copy for every skill that needs it. */
+  async sync(): Promise<SyncResponse> {
+    return this.request<SyncResponse>(API.sync, { method: 'POST', body: {} })
   }
 
   private async request<T>(path: string, options: { method?: string; body?: unknown } = {}): Promise<T> {

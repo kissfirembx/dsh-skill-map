@@ -4,9 +4,9 @@
  * dark-theme override blocks. The right sidebar owns the pane chrome; these
  * rules cover the list the plugin renders inside it.
  *
- * Type scale: 14px panel title, 13px rows and controls, 12px secondary and
- * footer, 11px badges and the invocation hint — one step above the 12px the
- * panel used to render everything at.
+ * Type scale: 14px panel title, 13px rows and controls, 12px secondary, the row
+ * summary and the footer, 11px badges and the origin line — one step above the
+ * 12px the panel used to render everything at.
  */
 
 .pane {
@@ -20,6 +20,21 @@
   line-height: 20px;
 }
 
+/*
+ * The official right column's content box. The frame owns the track, the resize
+ * handle and the column's place beside the conversation; this only has to fill
+ * the width it resolved and look like the rest of that column.
+ */
+.rightPane {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--dsw-alias-bg-layer-1);
+  border-left: 1px solid var(--dsw-alias-border-l1);
+}
+
 /* ---------- header ---------- */
 
 .head {
@@ -30,8 +45,20 @@
   border-bottom: 1px solid var(--dsw-alias-border-l1);
 }
 
-.title {
+/*
+ * The title and its settings button travel together, so the gear sits beside the
+ * name instead of drifting to the far edge of the header.
+ */
+.titleGroup {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   flex: 1 1 auto;
+  min-width: 0;
+}
+
+.title {
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -40,6 +67,36 @@
   font-weight: 600;
   line-height: 22px;
   color: var(--dsw-alias-label-primary);
+}
+
+/*
+ * The header action beside the title. Bordered and brighter than the row-level
+ * icon buttons, because at the far edge of the header it was easy to miss.
+ */
+.titleAction {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  color: var(--dsw-alias-label-secondary);
+  background: transparent;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: var(--dsw-radius-sm);
+  cursor: pointer;
+  transition: background-color .12s ease, color .12s ease;
+}
+
+.titleAction:hover {
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.titleAction:focus-visible {
+  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: -1px;
 }
 
 .ghostAction {
@@ -80,6 +137,56 @@
 
 .primaryAction:hover {
   background: var(--dsw-alias-button-primary-hover);
+}
+
+/*
+ * The one-click sync action. Its icon spins while the host is asking the model,
+ * which is the whole progress affordance: the call can take a minute on a large
+ * batch, and a disabled button alone would read as a hang.
+ */
+.syncAction {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 0 auto;
+  height: 26px;
+  padding: 0 9px;
+  font-family: var(--dsw-font-family);
+  font-size: 12px;
+  line-height: 24px;
+  color: var(--dsw-alias-label-secondary);
+  background: transparent;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: var(--dsw-radius-md);
+  cursor: pointer;
+  transition: background-color .12s ease, color .12s ease;
+}
+
+.syncAction:hover:not(:disabled) {
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.syncAction:disabled {
+  cursor: default;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.syncAction:focus-visible {
+  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: -1px;
+}
+
+.syncIcon {
+  flex: 0 0 auto;
+}
+
+.syncIcon[data-spinning="true"] {
+  animation: skillMapSpin 1s linear infinite;
+}
+
+@keyframes skillMapSpin {
+  to { transform: rotate(360deg); }
 }
 
 /* ---------- search ---------- */
@@ -337,11 +444,19 @@
   align-items: baseline;
   gap: 8px;
   min-width: 0;
+  /* Clips the summary's floor (see .skillSummary) instead of letting a narrow
+     pane push the row wider than it is. */
+  overflow: hidden;
 }
 
 .skillName {
-  flex: 0 1 auto;
-  min-width: 0;
+  /*
+   * Never shrinks for the summary's sake: the name is the one thing a row must
+   * always say in full. It ellipsises only when the name alone outgrows the row,
+   * which takes a very narrow pane.
+   */
+  flex: 0 0 auto;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -350,22 +465,55 @@
   color: var(--dsw-alias-label-primary);
 }
 
-.skillInvoke {
+/*
+ * The summary rides beside the name at rest, so a collapsed list still says what
+ * each skill does without being touched. It is removed rather than faded while
+ * the row is open: the name then stands alone and the origin line takes the
+ * space under it.
+ */
+.skillSummary {
+  /*
+   * Takes whatever the name leaves. The 7ch floor keeps a couple of characters
+   * from rendering as one glyph plus an ellipsis: below that the summary's box
+   * overflows .skillHead, gets clipped, and the row reads as name-only instead
+   * of showing a meaningless stub.
+   */
   flex: 1 1 auto;
+  min-width: 7ch;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  text-align: right;
-  font-family: var(--ds-font-family-code, var(--dsw-font-family));
-  font-size: 11px;
+  font-size: 12px;
   line-height: 20px;
-  color: var(--dsw-alias-label-caption);
-  opacity: 0;
-  transition: opacity .12s ease;
+  color: var(--dsw-alias-label-tertiary);
 }
 
-.skill:hover .skillInvoke {
-  opacity: 1;
+/*
+ * Where the skill came from ("Project · dsh-skill-map", "Global", "Bundled").
+ * It sits between the name and the full description and exists only in the open
+ * state, which is what keeps a resting row exactly one line tall.
+ */
+.skillOrigin {
+  display: none;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-caption);
+}
+
+.skill:hover .skillSummary,
+.skill:focus-within .skillSummary,
+.skill[data-reveal="true"] .skillSummary {
+  display: none;
+}
+
+.skill:hover .skillOrigin,
+.skill:focus-within .skillOrigin,
+.skill[data-reveal="true"] .skillOrigin {
+  display: block;
 }
 
 /*
@@ -427,6 +575,35 @@
 
 .notice[data-kind="error"] {
   color: var(--dsw-alias-state-error-primary);
+}
+
+/*
+ * The footer's copy-coverage chip. It only appears while the hand-written file
+ * owes the inventory a row, so the resting footer stays one line of text.
+ */
+.footAction {
+  flex: 0 0 auto;
+  height: 20px;
+  padding: 0 8px;
+  font-family: var(--dsw-font-family);
+  font-size: 11px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+  background: var(--dsw-alias-bg-layer-2);
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background-color .12s ease, color .12s ease;
+}
+
+.footAction:hover {
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.footAction:focus-visible {
+  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: -1px;
 }
 
 /* ---------- header icon actions ---------- */

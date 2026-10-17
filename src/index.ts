@@ -16,6 +16,7 @@ import type { CollectOptions } from './collect.ts'
 import { dshHome } from './dsh-home.ts'
 import { mountOnce } from './mount-once.ts'
 import { ROUTES, makeRoutes } from './routes.ts'
+import type { LlmFace } from './sync.ts'
 
 /** Stable cordis plugin name. */
 export const name = 'skill-map'
@@ -38,6 +39,15 @@ interface SessionList {
   list?: () => Array<{ header?: { cwd?: string } }>
 }
 
+/** Read the harness llm service off a context, when the profile provides one. */
+function readLlm(ctx: Context): LlmFace | undefined {
+  const get = (ctx as { get?: (name: string) => unknown }).get
+  if (typeof get !== 'function') return undefined
+  const service = get.call(ctx, 'llm') as { stream?: unknown } | undefined
+  if (service === undefined || typeof service.stream !== 'function') return undefined
+  return service as LlmFace
+}
+
 /** Plugin config. */
 export interface Config {
   /** Master switch for the plugin (routes). */
@@ -48,6 +58,11 @@ export interface Config {
   dshHome?: string
   /** User agents config root override (defaults to $DSH_AGENTS_HOME or ~/.agents). */
   agentsHome?: string
+  /**
+   * Model route the sync action calls, as `provider/model`. Defaults to the route
+   * this machine's profile already runs, so the action works without setup.
+   */
+  syncModel?: string
 }
 
 /**
@@ -76,12 +91,18 @@ function applyImpl(ctx: Context, config?: Config): void {
     }
   }
 
+  // The llm service is taken structurally and optionally: a profile without one
+  // still boots and serves the map; only the sync action reports it missing.
+  const llm = readLlm(ctx)
+
   const routes = makeRoutes(ctx, {
     dshHome: home,
     agentsHome,
     customSkillDirs,
     registry: skillCtx.skills,
     activeSessionCwds,
+    llm,
+    syncModel: config?.syncModel,
     logger: { warn: (error: unknown) => ctx.logger.warn(error) },
   })
 

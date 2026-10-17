@@ -17,7 +17,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-slots'
 import { SkillMapApi } from './api.ts'
 import { setRuntimeTranslate } from './panel-helpers.ts'
 import { en, zh, type SkillMapKey } from './locales.ts'
-import { registerSkillMapTab } from './side-tab.tsx'
+import { registerSurface } from './surface.ts'
 import { reportDailyHeartbeat } from './telemetry.ts'
 
 /**
@@ -66,10 +66,10 @@ export function apply(ctx: ClientContext): void {
   const api = new SkillMapApi()
   const disposers: Array<() => void> = []
   try {
-    disposers.push(registerSkillMapTab(ctx, api))
+    disposers.push(registerSurface(ctx, api))
   } catch (error) {
     // Registration failures degrade the panel, never the GUI.
-    console.warn('[skill-map] tab registration failed:', error)
+    console.warn('[skill-map] surface registration failed:', error)
   }
   ctx.effect(() => () => {
     for (const dispose of disposers.splice(0)) dispose()

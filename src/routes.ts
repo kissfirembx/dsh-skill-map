@@ -9,20 +9,27 @@
  */
 
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { mkdir, rename, writeFile } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
 import { isSkillMapAllowed } from './access.ts'
 import { collectSkills, findProjectRoot, type CollectOptions } from './collect.ts'
-import { assembleMap } from './core/map.ts'
+import { fingerprint } from './core/fingerprint.ts'
+import { assembleMap, compactDescription } from './core/map.ts'
 import { readTranslations } from './description-cache.ts'
 import { readJsonBody, writeJson } from './http.ts'
 import { mapPath, readMapState, sanitizeSave, writeMapState } from './map-store.ts'
+import { readSkillSources } from './skill-ledger.ts'
+import { readSkillSummaries } from './skill-summaries.ts'
+import { syncCopy, type LlmFace, type SyncTarget } from './sync.ts'
 
 /** Route paths (the client bundle mirrors these literals; tests assert both sides). */
 export const ROUTES = {
   list: '/api/dsh-skill-map/list',
   save: '/api/dsh-skill-map/save',
   health: '/api/dsh-skill-map/health',
+  sync: '/api/dsh-skill-map/sync',
 } as const
 
 /** URL query helper (first value, decoded). */
@@ -43,12 +50,28 @@ export interface SkillMapRoutesDeps {
   registry: CollectOptions['registry']
   /** Active session cwd list (project root base). */
   activeSessionCwds(): string[]
+  /** Harness llm service, when the profile provides one; the sync action needs it. */
+  llm?: LlmFace
+  /** Model route for the sync action (`provider/model`); the fallback route is used when absent. */
+  syncModel?: string
   /** Logger. */
   logger: { warn(error: unknown): void }
 }
 
+/** Model route the sync action falls back to when the config names none. */
+export const DEFAULT_SYNC_MODEL = 'deepseek-official/deepseek-v4-flash'
+
 /** Default process cwd fallback (overridable in tests). */
 export const DEFAULT_CWD = (): string => process.cwd()
+
+/** Write the auto copy file atomically (tmp + rename), the way the map file is written. */
+async function writeAutoCopy(file: string, entries: Record<string, unknown>): Promise<void> {
+  // The store directory may not exist yet on a profile that never opened the panel.
+  await mkdir(dirname(file), { recursive: true })
+  const tmp = `${file}.${Date.now().toString(36)}.tmp`
+  await writeFile(tmp, `${JSON.stringify(entries, null, 2)}\n`, 'utf8')
+  await rename(tmp, file)
+}
 
 /**
  * Build every /api/dsh-skill-map route (exact paths).
@@ -121,12 +144,33 @@ export function makeRoutes(ctx: Context, deps: SkillMapRoutesDeps): WebRoute[] {
           // Language caches are user-owned files beside the map; an unreadable
           // one costs a language, never the list.
           const translations = await readTranslations(dshHome).catch(() => ({}))
+          // The installer ledger sits beside the agents skills root; a missing
+          // or unreadable file costs the origin line, never the list.
+          const sources = await readSkillSources(agentsHome).catch(() => ({}))
+          // Copy lives beside the map file in two layers: what the user wrote, and
+          // what the sync action generated under it. The hand-written file always
+          // wins, and a skill in neither keeps its own description for both lines.
+          const [hand, auto] = await Promise.all([
+            readSkillSummaries(dshHome, 'hand'),
+            readSkillSummaries(dshHome, 'auto'),
+          ])
+          const overrides = { ...auto, ...hand }
           writeJson(res, 200, assembleMap({
             cwd,
             complete,
             mapPath: mapFile,
-            skills: skills.map((skill) => ({ name: skill.name, description: skill.description })),
+            // The row's origin line reads level/project/provider, so those three
+            // ride along; path and the invocation flags stay host-side.
+            skills: skills.map((skill) => ({
+              name: skill.name,
+              description: skill.description,
+              level: skill.level,
+              ...(skill.project !== undefined ? { project: skill.project } : {}),
+              ...(skill.provider !== undefined ? { provider: skill.provider } : {}),
+            })),
             state,
+            sources,
+            overrides,
             translations,
           }))
         } catch (error) {
@@ -180,6 +224,58 @@ export function makeRoutes(ctx: Context, deps: SkillMapRoutesDeps): WebRoute[] {
         } catch (error) {
           logger.warn(error)
           writeJson(res, 500, { error: error instanceof Error ? error.message : String(error) })
+        }
+      },
+    },
+    {
+      kind: 'exact',
+      path: ROUTES.sync,
+      handler: async (req: IncomingMessage, res: ServerResponse) => {
+        if (!guard(req, res, 'POST')) return
+        try {
+          const cwd = resolveCwd()
+          const { skills } = await collectSkills(collectOptions(cwd))
+          const [hand, auto] = await Promise.all([
+            readSkillSummaries(dshHome, 'hand'),
+            readSkillSummaries(dshHome, 'auto'),
+          ])
+          // The model compresses exactly what the list route serves, so the
+          // fingerprint recorded here lines up with the one that route computes.
+          const inventory: SyncTarget[] = skills.map((skill) => ({
+            name: skill.name,
+            description: compactDescription(skill.description),
+          }))
+          const live = new Set(inventory.map((entry) => entry.name))
+          // A target is a skill with no copy at all, or one whose description no
+          // longer matches the fingerprint its copy was written from.
+          const targets = inventory.filter((entry) => {
+            const override = hand[entry.name] ?? auto[entry.name]
+            if (override === undefined) return true
+            return override.from !== undefined && override.from !== '' && override.from !== fingerprint(entry.description)
+          })
+          const route = (deps.syncModel ?? DEFAULT_SYNC_MODEL).split('/')
+          const outcome = await syncCopy({
+            targets,
+            llm: deps.llm,
+            provider: route[0] ?? '',
+            model: route.slice(1).join('/'),
+            existing: auto,
+            live,
+            logger,
+          })
+          await writeAutoCopy(join(dshHome, 'skill-map', 'summaries.auto.json'), outcome.entries)
+          writeJson(res, 200, {
+            ok: true,
+            total: inventory.length,
+            targets: targets.length,
+            updated: outcome.updated,
+            failed: outcome.failed,
+          })
+        } catch (error) {
+          logger.warn(error)
+          const message = error instanceof Error ? error.message : String(error)
+          // A missing model service is a profile fact, not a bad request.
+          writeJson(res, message.includes('llm service') ? 503 : 500, { error: message })
         }
       },
     },

@@ -21,8 +21,8 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { SkillMapApi } from './api.ts'
-import type { DescriptionTranslations, MapCategory, MapPayload, SaveRequest } from '../core/payload.ts'
-import { tt } from './panel-helpers.ts'
+import type { CopyCoverage, DescriptionTranslations, MapCategory, MapPayload, SaveRequest, SkillOrigin } from '../core/payload.ts'
+import { originLabel, tt } from './panel-helpers.ts'
 import css from './skill-map-panel.module.css'
 
 /** Panel props: the API client the panel loads and saves through. */
@@ -36,6 +36,12 @@ interface LocalMap {
   unassigned: string[]
   /** One-line description per skill name; absent when the inventory has none. */
   descriptions: Record<string, string>
+  /** One-sentence summary per skill name, shown beside the name while the row is at rest. */
+  summaries: Record<string, string>
+  /** Origin per skill name, shown on the row's open line above the full description. */
+  origins: Record<string, SkillOrigin>
+  /** Coverage of the hand-written copy, as the host last computed it. */
+  copy: CopyCoverage
   /** Translations by language tag, when the user keeps cache files. */
   translations: DescriptionTranslations
   total: number
@@ -99,6 +105,9 @@ function toLocal(payload: MapPayload): LocalMap {
     categories: payload.categories.map((category) => ({ ...category, skills: [...category.skills] })),
     unassigned: [...payload.unassigned],
     descriptions: { ...payload.descriptions },
+    summaries: { ...payload.summaries },
+    origins: { ...payload.origins },
+    copy: payload.copy ?? { missing: [], stale: [], changed: [], fingerprints: {} },
     translations: { ...payload.translations },
     total: payload.total,
     mapPath: payload.mapPath,
@@ -344,10 +353,16 @@ function SettingsView({
   )
 }
 
-/** One skill row: the name (with its invocation hint), description on hover. */
+/**
+ * One skill row: the name with a one-sentence summary beside it at rest. On hover
+ * (or while a search is filtering) the summary gives way to the skill's origin
+ * and the fuller description.
+ */
 function SkillRow({
   skill,
   description,
+  summary,
+  origin,
   dragging,
   reveal,
   onCopy,
@@ -355,6 +370,10 @@ function SkillRow({
 }: {
   skill: string
   description: string | undefined
+  /** One-sentence summary shown beside the name at rest; hidden while the row is open. */
+  summary: string | undefined
+  /** Origin line ("Project · dsh-skill-map"), shown while the row is open. */
+  origin: string | undefined
   dragging: boolean
   /** True while a search is filtering: the row shows its description without hover. */
   reveal: boolean
@@ -378,8 +397,9 @@ function SkillRow({
     >
       <span className={css.skillHead}>
         <span className={css.skillName} title={skill}>{skill}</span>
-        <span className={css.skillInvoke} title={tt('skill.copy')} aria-hidden="true">{invocationOf(skill)}</span>
+        {summary !== undefined && <span className={css.skillSummary}>{summary}</span>}
       </span>
+      {origin !== undefined && <span className={css.skillOrigin}>{origin}</span>}
       {description !== undefined && <span className={css.skillDesc} title={description}>{description}</span>}
     </div>
   )
@@ -395,6 +415,8 @@ function CategoryRow({
   over,
   dragging,
   describe,
+  summarize,
+  originOf,
   onToggle,
   onDraft,
   onCommitRename,
@@ -413,6 +435,8 @@ function CategoryRow({
   over: boolean
   dragging: string | undefined
   describe: (name: string) => string | undefined
+  summarize: (name: string) => string | undefined
+  originOf: (name: string) => string | undefined
   onToggle: () => void
   onDraft: (value: string) => void
   onCommitRename: () => void
@@ -502,6 +526,8 @@ function CategoryRow({
           key={skill}
           skill={skill}
           description={describe(skill)}
+          summary={summarize(skill)}
+          origin={originOf(skill)}
           dragging={dragging === skill}
           reveal={query !== ''}
           onCopy={onCopySkill}
@@ -529,6 +555,7 @@ export function SkillMapPanel({ api }: SkillMapPanelProps): React.JSX.Element {
   const [draggingSkill, setDraggingSkill] = useState<string | undefined>(undefined)
   const [language, setLanguage] = useState<string>(readStoredLanguage)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [syncing, setSyncing] = useState(false)
   const loadSeq = useRef(0)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const dragCategory = useRef<string | undefined>(undefined)
@@ -593,6 +620,12 @@ export function SkillMapPanel({ api }: SkillMapPanelProps): React.JSX.Element {
     return map.descriptions[name]
   }, [map, language])
 
+  /** The one-sentence summary for a row; absent until the inventory carries one. */
+  const summaryOf = useCallback((name: string): string | undefined => map?.summaries[name], [map])
+
+  /** The row's origin line, already composed for the active language. */
+  const originOf = useCallback((name: string): string | undefined => originLabel(map?.origins[name]), [map])
+
   const languages = useMemo(() => (map === undefined ? [] : Object.keys(map.translations).sort()), [map])
 
   // A cache file can disappear between loads; drop back to the source text
@@ -640,6 +673,75 @@ export function SkillMapPanel({ api }: SkillMapPanelProps): React.JSX.Element {
     apply((current) => moveSkill(current, skill, toId))
   }, [apply])
 
+  /**
+   * Copy the copy-coverage report: which skills still have no hand-written row
+   * (each with the text currently standing in for it) and which written rows no
+   * longer match a skill. It is the hand-off for the next writing pass.
+   */
+  const copyOutstanding = useCallback((): void => {
+    if (map === undefined) return
+    const lines: string[] = []
+    if (map.copy.missing.length > 0) {
+      lines.push(`待补文案（${map.copy.missing.length}）`)
+      for (const name of map.copy.missing) {
+        lines.push(`- ${name} | ${map.descriptions[name] ?? map.summaries[name] ?? ''}`)
+        const print = map.copy.fingerprints[name]
+        if (print !== undefined) lines.push(`  from: ${print}`)
+      }
+    }
+    if (map.copy.changed.length > 0) {
+      if (lines.length > 0) lines.push('')
+      lines.push(`描述已变，需复核（${map.copy.changed.length}）`)
+      for (const name of map.copy.changed) {
+        lines.push(`- ${name} | ${map.descriptions[name] ?? ''}`)
+        const print = map.copy.fingerprints[name]
+        if (print !== undefined) lines.push(`  from: ${print}`)
+      }
+    }
+    if (map.copy.stale.length > 0) {
+      if (lines.length > 0) lines.push('')
+      lines.push(`失效条目（${map.copy.stale.length}，可从 summaries.json 删掉）`)
+      for (const name of map.copy.stale) lines.push(`- ${name}`)
+    }
+    void copyText(lines.join('\n')).then((ok) => {
+      setNotice({
+        text: ok ? tt('notice.todoCopied') : tt('notice.copyFailed', { name: tt('copy.todoHint') }),
+        kind: ok ? 'ok' : 'error',
+      })
+    })
+  }, [map])
+
+  /**
+   * Run one sync pass: the host asks the model for the copy every unwritten or
+   * changed skill is missing, writes it beside the hand-written file, and this
+   * reloads so the new lines render without a second click.
+   */
+  const runSync = useCallback((): void => {
+    if (syncing) return
+    setSyncing(true)
+    setNotice(undefined)
+    void api.sync()
+      .then(async (result) => {
+        const payload = await api.list()
+        setMap(toLocal(payload))
+        setNotice({
+          text: result.updated === 0
+            ? tt('notice.syncCurrent')
+            : result.failed > 0
+              ? tt('notice.syncPartial', { count: result.updated, failed: result.failed })
+              : tt('notice.synced', { count: result.updated }),
+          kind: result.failed > 0 ? 'error' : 'ok',
+        })
+      })
+      .catch((error: unknown) => {
+        setNotice({
+          text: tt('notice.syncFailed', { error: error instanceof Error ? error.message : String(error) }),
+          kind: 'error',
+        })
+      })
+      .finally(() => { setSyncing(false) })
+  }, [api, syncing])
+
   if (map === undefined) {
     return (
       <div className={css.pane} data-dsh-skillmap-view="" data-dsh-plugin="skill-map">
@@ -663,11 +765,23 @@ export function SkillMapPanel({ api }: SkillMapPanelProps): React.JSX.Element {
   }
 
   const total = map.total
+  const pendingCopy = map.copy.missing.length + map.copy.changed.length
 
   return (
     <div className={css.pane} data-dsh-skillmap-view="" data-dsh-plugin="skill-map">
       <header className={css.head} data-dsh-part="head">
-        <span className={css.title}>{tt('entry.label')}</span>
+        <span className={css.titleGroup}>
+          <span className={css.title}>{tt('entry.label')}</span>
+          <button
+            type="button"
+            className={css.titleAction}
+            title={tt('settings.open')}
+            aria-label={tt('settings.open')}
+            onClick={() => { setSettingsOpen(true) }}
+          >
+            <GearIcon />
+          </button>
+        </span>
         <button
           type="button"
           className={css.ghostAction}
@@ -682,12 +796,24 @@ export function SkillMapPanel({ api }: SkillMapPanelProps): React.JSX.Element {
         </button>
         <button
           type="button"
-          className={css.iconButton}
-          title={tt('settings.open')}
-          aria-label={tt('settings.open')}
-          onClick={() => { setSettingsOpen(true) }}
+          className={css.syncAction}
+          disabled={syncing}
+          title={tt('action.syncHint')}
+          onClick={runSync}
         >
-          <GearIcon />
+          <svg
+            className={css.syncIcon}
+            data-spinning={syncing}
+            viewBox="0 0 16 16"
+            width="13"
+            height="13"
+            aria-hidden="true"
+            focusable="false"
+          >
+            <path d="M13.2 8a5.2 5.2 0 1 1-1.6-3.8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            <path d="M13.4 2.4v2.8h-2.8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          {syncing ? tt('action.syncing') : tt('action.sync')}
         </button>
       </header>
       <div className={css.searchRow}>
@@ -748,6 +874,8 @@ export function SkillMapPanel({ api }: SkillMapPanelProps): React.JSX.Element {
             over={overId === category.id}
             dragging={draggingSkill}
             describe={describe}
+            summarize={summaryOf}
+            originOf={originOf}
             query={trimmed}
             onToggle={() => { setExpanded((current) => ({ ...current, [category.id]: current[category.id] !== true })) }}
             onDraft={setDraft}
@@ -831,6 +959,8 @@ export function SkillMapPanel({ api }: SkillMapPanelProps): React.JSX.Element {
               key={skill}
               skill={skill}
               description={describe(skill)}
+              summary={summaryOf(skill)}
+              origin={originOf(skill)}
               dragging={draggingSkill === skill}
               reveal={trimmed !== ''}
               onCopy={copySkill}
@@ -841,6 +971,11 @@ export function SkillMapPanel({ api }: SkillMapPanelProps): React.JSX.Element {
       </div>
       <footer className={css.foot} data-dsh-part="footer">
         <span>{tt('footer.total', { total })}</span>
+        {pendingCopy > 0 && (
+          <button type="button" className={css.footAction} title={tt('copy.todoHint')} onClick={copyOutstanding}>
+            {tt('copy.todo', { count: pendingCopy })}
+          </button>
+        )}
         {notice !== undefined && <span className={css.notice} data-kind={notice.kind}>{notice.text}</span>}
       </footer>
     </div>

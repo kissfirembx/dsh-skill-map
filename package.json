@@ -1,7 +1,7 @@
 {
   "name": "@kissfire/dsh-skill-map",
   "description": "DSH skill map: browse every loaded skill through your own categories in a right-sidebar tab, and rename, add, delete, reorder or re-file them in place.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/kissfirembx/dsh-skill-map.git"
@@ -49,7 +49,7 @@
   },
   "scripts": {
     "build": "tsc -b tsconfig.build.json && tsdown",
-    "publish:npm": "pnpm build && npm publish --access public --registry=https://registry.npmjs.org/",
+    "publish:npm": "pnpm build && npm publish --ignore-scripts --access public --registry=https://registry.npmjs.org/",
     "prepare": "tsdown",
     "watch": "tsdown --watch",
     "test": "vitest run",
