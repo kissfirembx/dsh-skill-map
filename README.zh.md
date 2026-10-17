@@ -12,7 +12,7 @@
 
 ## 它长什么样
 
-![技能地图面板：左边是对话，右边是按分类排好的 skill](https://raw.githubusercontent.com/kissfirembx/dsh-skill-map/main/assets/skill-map-panel.png)
+![技能地图面板：顶部是工作区标签，中间是按分类排好的 skill，最下面是未归类与总数](https://raw.githubusercontent.com/kissfirembx/dsh-skill-map/main/assets/skill-map-panel.png)
 
 ## 它能做什么
 
