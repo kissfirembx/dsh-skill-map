@@ -1,7 +1,7 @@
 {
   "name": "@kissfire/dsh-skill-map",
-  "description": "DSH skill map: sort every loaded skill into one or more of your own workspaces — each a complete classification — inside a right-sidebar tab, with first-run AI classification and in-place editing.",
-  "version": "0.3.0",
+  "description": "DSH skill map: all your loaded skills, sorted into your own categories, in a right-sidebar tab.",
+  "version": "0.3.1",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/kissfirembx/dsh-skill-map.git"
