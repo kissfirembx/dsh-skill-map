@@ -674,44 +674,6 @@ export function SkillMapPanel({ api }: SkillMapPanelProps): React.JSX.Element {
   }, [apply])
 
   /**
-   * Copy the copy-coverage report: which skills still have no hand-written row
-   * (each with the text currently standing in for it) and which written rows no
-   * longer match a skill. It is the hand-off for the next writing pass.
-   */
-  const copyOutstanding = useCallback((): void => {
-    if (map === undefined) return
-    const lines: string[] = []
-    if (map.copy.missing.length > 0) {
-      lines.push(`待补文案（${map.copy.missing.length}）`)
-      for (const name of map.copy.missing) {
-        lines.push(`- ${name} | ${map.descriptions[name] ?? map.summaries[name] ?? ''}`)
-        const print = map.copy.fingerprints[name]
-        if (print !== undefined) lines.push(`  from: ${print}`)
-      }
-    }
-    if (map.copy.changed.length > 0) {
-      if (lines.length > 0) lines.push('')
-      lines.push(`描述已变，需复核（${map.copy.changed.length}）`)
-      for (const name of map.copy.changed) {
-        lines.push(`- ${name} | ${map.descriptions[name] ?? ''}`)
-        const print = map.copy.fingerprints[name]
-        if (print !== undefined) lines.push(`  from: ${print}`)
-      }
-    }
-    if (map.copy.stale.length > 0) {
-      if (lines.length > 0) lines.push('')
-      lines.push(`失效条目（${map.copy.stale.length}，可从 summaries.json 删掉）`)
-      for (const name of map.copy.stale) lines.push(`- ${name}`)
-    }
-    void copyText(lines.join('\n')).then((ok) => {
-      setNotice({
-        text: ok ? tt('notice.todoCopied') : tt('notice.copyFailed', { name: tt('copy.todoHint') }),
-        kind: ok ? 'ok' : 'error',
-      })
-    })
-  }, [map])
-
-  /**
    * Run one sync pass: the host asks the model for the copy every unwritten or
    * changed skill is missing, writes it beside the hand-written file, and this
    * reloads so the new lines render without a second click.
@@ -765,7 +727,11 @@ export function SkillMapPanel({ api }: SkillMapPanelProps): React.JSX.Element {
   }
 
   const total = map.total
-  const pendingCopy = map.copy.missing.length + map.copy.changed.length
+  // Only what the update action can actually fill is surfaced: a skill with no
+  // copy in either layer. The rest of the coverage record (changed, stale) stays
+  // in the payload and the files, unrendered — the footer nudges one update click
+  // instead of showing a to-do list the user has to read.
+  const pendingCopy = map.copy?.missing.length ?? 0
 
   return (
     <div className={css.pane} data-dsh-skillmap-view="" data-dsh-plugin="skill-map">
@@ -972,8 +938,14 @@ export function SkillMapPanel({ api }: SkillMapPanelProps): React.JSX.Element {
       <footer className={css.foot} data-dsh-part="footer">
         <span>{tt('footer.total', { total })}</span>
         {pendingCopy > 0 && (
-          <button type="button" className={css.footAction} title={tt('copy.todoHint')} onClick={copyOutstanding}>
-            {tt('copy.todo', { count: pendingCopy })}
+          <button
+            type="button"
+            className={css.footAction}
+            title={tt('copy.pendingHint')}
+            disabled={syncing}
+            onClick={runSync}
+          >
+            {tt('copy.pending', { count: pendingCopy })}
           </button>
         )}
         {notice !== undefined && <span className={css.notice} data-kind={notice.kind}>{notice.text}</span>}

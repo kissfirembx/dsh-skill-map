@@ -8,8 +8,8 @@ DSH skill map: browse every loaded skill through your own categories in a right-
 
 - Contributes one tab to the right sidebar, through the public service the right sidebar exposes to other plugins.
 - Shows the loaded skills as categories: a caret, a category name and a count, collapsed by default. A skill row is one line — the name, then a one-sentence summary of what the skill does. Hovering the row (or filtering a search) swaps that summary for the GitHub project the skill was downloaded from — read from the skills installer's ledger — and the fuller description.
-- Keeps written copy and the inventory in step: when a skill is installed, removed or updated, the footer says how many rows need attention — unwritten ones, rows whose skill changed underneath them, and rows left behind by a deletion — and one click copies that list out of the panel.
-- Can write the copy for you: the sync action in the header asks the profile's own model to fill every missing line and refresh the ones whose skill changed, then reloads the list and reports what it wrote. A machine-written line never overrides one you wrote by hand.
+- Copy drift is tracked internally and stays off the screen: when a newly installed skill still has no copy, the footer offers a small "Write N missing lines" chip that runs the same update pass. Rows whose skill changed underneath them, and rows left behind by a deletion, are no longer reported and need no attention.
+- Can write the copy for you: the Update action in the header asks the profile's own model to fill every missing line and refresh the ones whose skill changed, then reloads the list and reports what it wrote. A machine-written line never overrides one you wrote by hand.
 - Searches skill names and descriptions, and expands or collapses every category at once.
 - Switches the description language from the panel's own settings view (the gear in the header): the skill's own text, or any translation cache kept at `$DSH_HOME/skill-map/descriptions.<lang>.json`. A skill with no row in that cache keeps its own text.
 - Creates, renames and deletes categories from the panel, and reorders them by dragging.
@@ -52,7 +52,7 @@ Restart `dsh web`, or toggle the plugin's row in the plugin manager, then open t
 ## Security model
 
 - Every route sits behind the family trust fence: a loopback socket plus a loopback Host header, or a live paired-device cookie when `dsh-remote-web-ui` is loaded. An unpaired LAN client gets `403 forbidden: loopback-only` before any file is read.
-- Skill roots are read-only for this plugin. It writes only its own files under the DSH home directory: the map file, and the auto-copy file the sync action produces.
+- Skill roots are read-only for this plugin. It writes only its own files under the DSH home directory: the map file, and the auto-copy file the Update action produces.
 - The save route validates placements against a fresh inventory pass, so a request cannot describe a skill this host does not serve; unknown names are dropped and counted in the response.
 - The map file is written atomically and parsed defensively, so a truncated or hand-edited file falls back to the shipped categories instead of breaking the panel.
 
@@ -62,7 +62,7 @@ Restart `dsh web`, or toggle the plugin's row in the plugin manager, then open t
 - Categories are flat: there is no nesting and no per-skill note.
 - A placement for an uninstalled skill is dropped on the next save rather than kept as a placeholder.
 - The shipped categories are a one-time seed; after the first open the panel never rewrites them from the package.
-- The sync action needs an `llm` service in the profile. Without one it reports the action as unavailable and leaves the rest of the panel working.
+- The Update action needs an `llm` service in the profile. Without one it reports the action as unavailable and leaves the rest of the panel working.
 
 ## Development
 

@@ -578,8 +578,9 @@
 }
 
 /*
- * The footer's copy-coverage chip. It only appears while the hand-written file
- * owes the inventory a row, so the resting footer stays one line of text.
+ * The footer's missing-copy chip. It only appears while some skill has no copy
+ * in either layer, so the resting footer stays one line of text. Clicking it runs
+ * the same update pass as the header button.
  */
 .footAction {
   flex: 0 0 auto;
@@ -599,6 +600,12 @@
 .footAction:hover {
   color: var(--dsw-alias-label-primary);
   background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.footAction:disabled {
+  cursor: default;
+  color: var(--dsw-alias-label-tertiary);
+  background: var(--dsw-alias-bg-layer-2);
 }
 
 .footAction:focus-visible {
