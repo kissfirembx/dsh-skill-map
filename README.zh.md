@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-![dsh-skill-map](assets/banner.svg)
+![dsh-skill-map](https://raw.githubusercontent.com/kissfirembx/dsh-skill-map/main/assets/banner.svg)
 
 **它把你装的一堆 skill 分好类，找起来快得多。**
 
@@ -12,7 +12,7 @@
 
 ## 它长什么样
 
-![技能地图面板：左边是对话，右边是按分类排好的 skill](assets/skill-map-panel.png)
+![技能地图面板：左边是对话，右边是按分类排好的 skill](https://raw.githubusercontent.com/kissfirembx/dsh-skill-map/main/assets/skill-map-panel.png)
 
 ## 它能做什么
 

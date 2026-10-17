@@ -2,7 +2,7 @@
 
 English | [中文](README.zh.md)
 
-![dsh-skill-map](assets/banner.svg)
+![dsh-skill-map](https://raw.githubusercontent.com/kissfirembx/dsh-skill-map/main/assets/banner.svg)
 
 **It sorts all your skills, so you can find the right one fast.**
 
@@ -12,7 +12,7 @@ What you sort is saved on your own computer, so a new version of the plugin will
 
 ## What it looks like
 
-![The skill map panel: the conversation on the left, skills sorted into categories on the right](assets/skill-map-panel.png)
+![The skill map panel: the conversation on the left, skills sorted into categories on the right](https://raw.githubusercontent.com/kissfirembx/dsh-skill-map/main/assets/skill-map-panel.png)
 
 ## What it does
 
