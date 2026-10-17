@@ -1,5 +1,20 @@
+# Dependencies and build output
 node_modules/
 lib/
-.npmrc
+coverage/
+*.tsbuildinfo
+
+# Release artifacts from `npm pack` / `pnpm publish`
 *.tgz
+
+# Local machine configuration and private working files — never published
+.npmrc
 AGENTS.md
+local/
+
+# Editor and OS noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log
