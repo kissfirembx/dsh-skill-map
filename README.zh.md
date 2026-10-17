@@ -44,9 +44,9 @@ dsh plugin --profile web add @kissfire/dsh-skill-map
 dsh plugin --profile web add https://github.com/kissfirembx/dsh-skill-map/releases/latest/download/kissfire-dsh-skill-map.tgz
 ```
 
-## 许可：MIT，谁都能用
+## 许可证
 
-这个项目用 MIT 许可证，不要钱，谁都能用。改、传给别人、拿去卖，都可以。只要留下一件事：作者的名字和免责声明（就是说，用出问题作者不负责）。全文见 [LICENSE](LICENSE)。
+本项目基于 [MIT 许可证](LICENSE) 发布。
 
 ## 想看得更细
 

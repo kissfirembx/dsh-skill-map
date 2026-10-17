@@ -44,9 +44,9 @@ If that does not work, download the ready-built package instead. The link never 
 dsh plugin --profile web add https://github.com/kissfirembx/dsh-skill-map/releases/latest/download/kissfire-dsh-skill-map.tgz
 ```
 
-## License: MIT, free for anyone
+## License
 
-This project is under the MIT license. It costs nothing and anyone can use it. Change it, give it away, sell it — all fine. You only have to keep one thing: the author's name and the disclaimer (that means the author is not responsible if something goes wrong). Full text: [LICENSE](LICENSE).
+This project is licensed under the [MIT License](LICENSE).
 
 ## For more detail
 

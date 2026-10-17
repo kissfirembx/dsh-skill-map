@@ -1,7 +1,7 @@
 {
   "name": "@kissfire/dsh-skill-map",
   "description": "DSH skill map: all your loaded skills, sorted into your own categories, in a right-sidebar tab.",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/kissfirembx/dsh-skill-map.git"
