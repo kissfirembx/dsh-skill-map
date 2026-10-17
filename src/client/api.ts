@@ -3,7 +3,7 @@
  * same-origin fetch; the host enforces the trust fence on its side.
  */
 
-import type { MapPayload, SaveRequest, SaveResponse } from '../core/payload.ts'
+import type { AutoResponse, MapPayload, SaveRequest, SaveResponse } from '../core/payload.ts'
 
 /** Route paths mirrored from the host (src/routes.ts ROUTES). */
 const API = {
@@ -11,6 +11,7 @@ const API = {
   save: '/api/dsh-skill-map/save',
   health: '/api/dsh-skill-map/health',
   sync: '/api/dsh-skill-map/sync',
+  auto: '/api/dsh-skill-map/workspaces/auto',
 } as const
 
 /** Body of POST /api/dsh-skill-map/sync. */
@@ -31,7 +32,7 @@ export interface HealthPayload {
   ok: true
   plugin: 'skill-map'
   skills: number
-  categories: number
+  workspaces: number
   mapPath: string
 }
 
@@ -48,12 +49,12 @@ export class SkillMapApi {
     return this.request<MapPayload>(url)
   }
 
-  /** Persist the whole user map (category order plus every placement). */
+  /** Persist the whole workspace document (every tab plus its placements). */
   async save(request: SaveRequest): Promise<SaveResponse> {
     return this.request<SaveResponse>(API.save, { method: 'POST', body: request })
   }
 
-  /** Read the route-family health (skill and category counts, map file path). */
+  /** Read the route-family health (skill and workspace counts, map file path). */
   async health(): Promise<HealthPayload> {
     return this.request<HealthPayload>(API.health)
   }
@@ -61,6 +62,17 @@ export class SkillMapApi {
   /** Ask the host to write copy for every skill that needs it. */
   async sync(): Promise<SyncResponse> {
     return this.request<SyncResponse>(API.sync, { method: 'POST', body: {} })
+  }
+
+  /**
+   * Ask the host to classify the inventory. With no workspace id it creates the
+   * first workspace; with one it fills that blank tab.
+   */
+  async auto(workspaceId?: string): Promise<AutoResponse> {
+    return this.request<AutoResponse>(API.auto, {
+      method: 'POST',
+      body: workspaceId === undefined ? {} : { workspaceId },
+    })
   }
 
   private async request<T>(path: string, options: { method?: string; body?: unknown } = {}): Promise<T> {

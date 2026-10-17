@@ -203,6 +203,12 @@ export async function syncCopy(options: {
 
   try {
     const draft = await requestDraft({ llm, provider, model, targets })
+    // An empty answer for a non-empty target list is a failure, not "nothing to
+    // do". Reporting it keeps the panel from claiming everything is current while
+    // the footer still lists the missing copy.
+    if (Object.keys(draft).length === 0) {
+      throw new Error(`the model route ${provider}/${model} returned no usable copy`)
+    }
     let updated = 0
     for (const [name, entry] of Object.entries(draft)) {
       entries[name] = entry

@@ -234,10 +234,243 @@
   background: var(--dsw-alias-interactive-bg-hover);
 }
 
-:is(.ghostAction, .primaryAction, .searchClear, .caret, .iconAction, .iconButton, .categoryName):focus-visible,
-.searchInput:focus-visible {
+:is(.ghostAction, .primaryAction, .searchClear, .caret, .iconAction, .iconButton, .categoryName, .confirmDelete, .confirmCancel, .workspaceTab, .workspaceClose, .workspaceAdd, .assignHintAction):focus-visible,
+.searchInput:focus-visible,
+.workspaceInput:focus-visible {
   outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
   outline-offset: -1px;
+}
+
+/* ---------- workspace tabs ---------- */
+
+/*
+ * One tab per classification scheme. The strip is the only place that names a
+ * workspace, so it scrolls horizontally rather than wrapping: a second row would
+ * push the list down every time a workspace is added.
+ */
+.workspaceTabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 8px 6px;
+  overflow-x: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+
+.workspaceTabs::-webkit-scrollbar {
+  display: none;
+}
+
+.workspaceTabWrap {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  max-width: 170px;
+  border: 1px solid transparent;
+  border-radius: var(--dsw-radius-md);
+}
+
+.workspaceTabWrap[data-active="true"] {
+  background: var(--dsw-alias-bg-layer-2);
+  border-color: var(--dsw-alias-border-l1);
+}
+
+.workspaceTab {
+  min-width: 0;
+  height: 26px;
+  padding: 0 4px 0 9px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--dsw-font-family);
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.workspaceTabWrap[data-active="true"] .workspaceTab {
+  color: var(--dsw-alias-label-primary);
+}
+
+/* The close glyph is always mounted so keyboard users can reach it; it becomes
+   visible on hover, focus, or on the tab that is already active. */
+.workspaceClose {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  margin-right: 2px;
+  padding: 0;
+  color: var(--dsw-alias-label-tertiary);
+  background: transparent;
+  border: none;
+  border-radius: var(--dsw-radius-sm);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity .12s ease, background-color .12s ease, color .12s ease;
+}
+
+.workspaceTabWrap:hover .workspaceClose,
+.workspaceTabWrap:focus-within .workspaceClose,
+.workspaceTabWrap[data-active="true"] .workspaceClose {
+  opacity: 1;
+}
+
+.workspaceClose:hover {
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.workspaceAdd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  margin-left: 2px;
+  padding: 0;
+  color: var(--dsw-alias-label-tertiary);
+  background: transparent;
+  border: none;
+  border-radius: var(--dsw-radius-sm);
+  cursor: pointer;
+}
+
+.workspaceAdd:hover {
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.workspaceInput {
+  width: 128px;
+  height: 24px;
+  padding: 0 6px;
+  font-family: var(--dsw-font-family);
+  font-size: 12px;
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-specific-input-major);
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-sm);
+}
+
+/*
+ * Removing a workspace is as destructive as removing a category (its whole
+ * classification goes), so it gets the same inline confirmation, docked under
+ * the tab strip instead of under the tab itself.
+ */
+.tabConfirm {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 8px 6px;
+  padding: 6px 8px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+  background: var(--dsw-alias-bg-layer-2);
+  border-radius: var(--dsw-radius-md);
+}
+
+/*
+ * The guided-classify hint: shown only while a workspace has categories but no
+ * placement yet, which is the window where "let the model fill these" is the
+ * obvious next step. It disappears on the first placed skill.
+ */
+.assignHint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 8px 6px;
+  padding: 6px 8px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+  background: var(--dsw-alias-bg-layer-2);
+  border-radius: var(--dsw-radius-md);
+}
+
+.assignHintText {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.assignHintAction {
+  flex: 0 0 auto;
+  height: 22px;
+  padding: 0 8px;
+  font-family: var(--dsw-font-family);
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-primary);
+  background: transparent;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: var(--dsw-radius-sm);
+  cursor: pointer;
+  transition: background-color .12s ease;
+}
+
+.assignHintAction:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.assignHintAction:disabled {
+  opacity: .5;
+  cursor: default;
+}
+
+/* ---------- first run ---------- */
+
+.firstRun {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  justify-content: center;
+  gap: 10px;
+  min-height: 0;
+  padding: 24px 16px;
+}
+
+.firstRunTitle {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 22px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.firstRunBody {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.firstRunActions,
+.blankActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.firstRunHint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.blankState {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 18px 12px;
 }
 
 /* ---------- body ---------- */
@@ -254,6 +487,38 @@
   --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
   --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
   padding: 4px 8px 14px;
+}
+
+/*
+ * Unassigned is a band of its own, pinned under the scrolling list rather than
+ * being the last section inside it: the bucket you drop things out of is always
+ * reachable, and a long list cannot bury it. It opens on click, not by default,
+ * and caps its own height so an expanded bucket cannot eat the whole pane.
+ */
+.unassigned {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  max-height: 45%;
+  min-height: 0;
+  padding: 0 8px;
+  border-top: 1px solid var(--dsw-alias-border-l1);
+}
+
+.unassignedBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: 6px;
+  scrollbar-gutter: stable;
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+}
+
+/* The band's name toggles it, so it must not read as a static label. */
+.unassigned .categoryName[data-static="true"] {
+  cursor: pointer;
 }
 
 .status {
@@ -419,6 +684,62 @@
   border-radius: var(--dsw-radius-sm);
 }
 
+/*
+ * The delete confirmation: an inline bar under the category header, not a modal.
+ * The sidebar is too narrow for a dialog, and this keeps the target name and the
+ * consequence ("N skills return to Unassigned") visible at the moment of choice.
+ */
+.confirmBar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 6px 4px 30px;
+  padding: 6px 8px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+  background: var(--dsw-alias-bg-layer-2);
+  border-radius: var(--dsw-radius-md);
+}
+
+.confirmText {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.confirmDelete,
+.confirmCancel {
+  flex: 0 0 auto;
+  height: 22px;
+  padding: 0 8px;
+  font-family: var(--dsw-font-family);
+  font-size: 12px;
+  line-height: 20px;
+  background: transparent;
+  border-radius: var(--dsw-radius-sm);
+  cursor: pointer;
+  transition: background-color .12s ease, color .12s ease;
+}
+
+.confirmDelete {
+  color: var(--dsw-alias-state-error-primary);
+  border: 1px solid var(--dsw-alias-state-error-primary);
+}
+
+.confirmDelete:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.confirmCancel {
+  color: var(--dsw-alias-label-secondary);
+  border: 1px solid var(--dsw-alias-border-l1);
+}
+
+.confirmCancel:hover {
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
 /* ---------- skill rows ---------- */
 
 .skill {
@@ -548,6 +869,57 @@
 .skill:hover .skillDesc,
 .skill:focus-within .skillDesc {
   color: var(--dsw-alias-label-secondary);
+}
+
+/*
+ * The category picker lives in the same open state as the description: it is
+ * clipped and transparent while the row is at rest, so a resting row stays one
+ * line, and it is not part of a search reveal — filtering shows the text, not
+ * the controls. Re-filing a skill therefore takes a hover and one click, instead
+ * of dragging it to a category that may well be collapsed.
+ */
+.skillActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  max-height: 0;
+  margin-top: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition: max-height .18s ease, margin-top .18s ease, opacity .14s ease;
+}
+
+.skill:hover .skillActions,
+.skill:focus-within .skillActions {
+  max-height: 26px;
+  margin-top: 2px;
+  opacity: 1;
+}
+
+.skillCategory {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-caption);
+}
+
+.skillCategorySelect {
+  max-width: 150px;
+  height: 22px;
+  padding: 0 4px;
+  font-family: var(--dsw-font-family);
+  font-size: 11px;
+  color: var(--dsw-alias-label-secondary);
+  background: var(--dsw-specific-input-major);
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: var(--dsw-radius-sm);
+}
+
+.skillCategorySelect:focus-visible {
+  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: -1px;
 }
 
 /* ---------- footer ---------- */

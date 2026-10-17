@@ -6,12 +6,13 @@ import {
   MAX_CATEGORIES,
   MAX_CATEGORY_NAME,
   mapPath,
+  parseMapFile,
   parseMapState,
-  readMapState,
+  readMapFile,
   sanitizeSave,
-  writeMapState,
+  writeMapFile,
 } from '../src/map-store.ts'
-import { MAP_VERSION } from '../src/core/payload.ts'
+import { DEFAULT_WORKSPACE_NAME, MAP_VERSION, MAX_WORKSPACES, MAX_WORKSPACE_NAME } from '../src/core/payload.ts'
 
 const tempDirs: string[] = []
 
@@ -25,16 +26,21 @@ async function tempMapPath(): Promise<string> {
   return join(dir, 'skill-map', 'map.json')
 }
 
+/** One well-formed workspace row. */
+function row(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return { id: 'w1', name: '工作区一', categories: [{ id: 'c1', name: 'One' }], assignments: { alpha: 'c1' }, ...overrides }
+}
+
 describe('mapPath', () => {
   it('lives under the dsh home, never inside a skill root', () => {
     expect(mapPath('C:\\home\\.dsh')).toBe(join('C:\\home\\.dsh', 'skill-map', 'map.json'))
   })
 })
 
-describe('parseMapState', () => {
-  it('reads a well-formed map', () => {
-    const parsed = parseMapState(JSON.stringify({ version: 1, categories: [{ id: 'a', name: 'A' }], assignments: { alpha: 'a' } }))
-    expect(parsed).toEqual({ version: MAP_VERSION, categories: [{ id: 'a', name: 'A' }], assignments: { alpha: 'a' } })
+describe('parseMapState (legacy shape)', () => {
+  it('reads a well-formed single map', () => {
+    const parsed = parseMapState(JSON.stringify({ version: 2, categories: [{ id: 'a', name: 'A' }], assignments: { alpha: 'a' } }))
+    expect(parsed).toEqual({ version: 2, categories: [{ id: 'a', name: 'A' }], assignments: { alpha: 'a' } })
   })
 
   it('reports an unusable top-level shape instead of throwing', () => {
@@ -42,10 +48,6 @@ describe('parseMapState', () => {
     expect(parseMapState('[]')).toBeUndefined()
     expect(parseMapState('null')).toBeUndefined()
     expect(parseMapState('{"assignments":{}}')).toBeUndefined()
-  })
-
-  it('keeps an empty category list as a valid map', () => {
-    expect(parseMapState('{"categories":[]}')).toEqual({ version: MAP_VERSION, categories: [], assignments: {} })
   })
 
   it('drops malformed categories, duplicate ids and dangling placements', () => {
@@ -65,65 +67,138 @@ describe('parseMapState', () => {
   })
 })
 
+describe('parseMapFile', () => {
+  it('reads a workspace document', () => {
+    const parsed = parseMapFile(JSON.stringify({ version: 3, workspaces: [row()] }))
+    expect(parsed?.legacy).toBe(false)
+    expect(parsed?.file.workspaces).toEqual([{ id: 'w1', name: '工作区一', categories: [{ id: 'c1', name: 'One' }], assignments: { alpha: 'c1' } }])
+  })
+
+  it('accepts an empty document', () => {
+    expect(parseMapFile('{"version":3,"workspaces":[]}')?.file.workspaces).toEqual([])
+  })
+
+  it('migrates a legacy single map into one workspace', () => {
+    const parsed = parseMapFile(JSON.stringify({ version: 2, categories: [{ id: 'a', name: 'A' }], assignments: { alpha: 'a' } }))
+    expect(parsed?.legacy).toBe(true)
+    expect(parsed?.file.workspaces).toEqual([{
+      id: 'w1',
+      name: DEFAULT_WORKSPACE_NAME,
+      categories: [{ id: 'a', name: 'A' }],
+      assignments: { alpha: 'a' },
+    }])
+  })
+
+  it('reports an unusable shape instead of throwing', () => {
+    expect(parseMapFile('not json')).toBeUndefined()
+    expect(parseMapFile('[]')).toBeUndefined()
+    expect(parseMapFile('null')).toBeUndefined()
+    expect(parseMapFile('{"version":3}')).toBeUndefined()
+  })
+
+  it('drops malformed workspace rows, duplicate ids and dangling placements', () => {
+    const parsed = parseMapFile(JSON.stringify({
+      workspaces: [
+        row(),
+        row({ name: 'Duplicate id' }),
+        row({ id: 'bad id' }),
+        row({ id: 'w2', name: '   ' }),
+        row({ id: 'w3', name: 'x'.repeat(MAX_WORKSPACE_NAME + 1) }),
+        row({ id: 'w4', assignments: { alpha: 'missing', 'Bad Name': 'c1', beta: 42 } }),
+        'not an object',
+      ],
+    }))
+    expect(parsed?.file.workspaces.map((workspace) => workspace.id)).toEqual(['w1', 'w4'])
+    expect(parsed?.file.workspaces[1]?.assignments).toEqual({})
+  })
+})
+
 describe('sanitizeSave', () => {
   const known = new Set(['alpha', 'beta'])
 
-  it('accepts a well-formed request', () => {
-    const result = sanitizeSave({ categories: [{ id: 'c1', name: 'One' }], assignments: { alpha: 'c1' } }, known)
-    expect(result?.state).toEqual({ version: MAP_VERSION, categories: [{ id: 'c1', name: 'One' }], assignments: { alpha: 'c1' } })
+  it('accepts a well-formed document', () => {
+    const result = sanitizeSave({ workspaces: [row()] }, known)
+    expect(result?.file.version).toBe(MAP_VERSION)
+    expect(result?.file.workspaces).toEqual([{ id: 'w1', name: '工作区一', categories: [{ id: 'c1', name: 'One' }], assignments: { alpha: 'c1' } }])
     expect(result?.dropped).toBe(0)
   })
 
-  it('rejects a malformed request instead of writing it', () => {
+  it('accepts an empty workspace list (the user deleted every tab)', () => {
+    expect(sanitizeSave({ workspaces: [] }, known)?.file.workspaces).toEqual([])
+  })
+
+  it('rejects a malformed document instead of writing it', () => {
     expect(sanitizeSave(null, known)).toBeUndefined()
     expect(sanitizeSave({}, known)).toBeUndefined()
-    expect(sanitizeSave({ categories: [], assignments: [] }, known)).toBeUndefined()
-    expect(sanitizeSave({ categories: [{ id: 'a', name: 'A' }, { id: 'a', name: 'B' }], assignments: {} }, known)).toBeUndefined()
-    expect(sanitizeSave({ categories: [{ id: 'bad id', name: 'A' }], assignments: {} }, known)).toBeUndefined()
-    expect(sanitizeSave({ categories: [{ id: 'a', name: '' }], assignments: {} }, known)).toBeUndefined()
-    expect(sanitizeSave({ categories: [{ id: 'a', name: 'A' }], assignments: { alpha: 'missing' } }, known)).toBeUndefined()
-    expect(sanitizeSave({ categories: Array.from({ length: MAX_CATEGORIES + 1 }, (_, i) => ({ id: `c${i}`, name: 'x' })), assignments: {} }, known)).toBeUndefined()
+    expect(sanitizeSave({ workspaces: 'nope' }, known)).toBeUndefined()
+    expect(sanitizeSave({ workspaces: [row({ id: 'bad id' })] }, known)).toBeUndefined()
+    expect(sanitizeSave({ workspaces: [row({ name: '' })] }, known)).toBeUndefined()
+    expect(sanitizeSave({ workspaces: [row(), row()] }, known)).toBeUndefined()
+    expect(sanitizeSave({ workspaces: [row({ categories: 'nope' })] }, known)).toBeUndefined()
+    expect(sanitizeSave({ workspaces: [row({ categories: [{ id: 'c1', name: 'A' }, { id: 'c1', name: 'B' }] })] }, known)).toBeUndefined()
+    expect(sanitizeSave({ workspaces: [row({ assignments: { alpha: 'missing' } })] }, known)).toBeUndefined()
+    expect(sanitizeSave({
+      workspaces: [row({ categories: Array.from({ length: MAX_CATEGORIES + 1 }, (_, i) => ({ id: `c${i}`, name: 'x' })) })],
+    }, known)).toBeUndefined()
+    expect(sanitizeSave({
+      workspaces: Array.from({ length: MAX_WORKSPACES + 1 }, (_, i) => row({ id: `w${i}` })),
+    }, known)).toBeUndefined()
   })
 
   it('drops placements for skills the host no longer serves and counts them', () => {
     const result = sanitizeSave({
-      categories: [{ id: 'c1', name: 'One' }],
-      assignments: { alpha: 'c1', removed: 'c1', 'Bad Name': 'c1' },
+      workspaces: [row({ assignments: { alpha: 'c1', removed: 'c1', 'Bad Name': 'c1' } })],
     }, known)
-    expect(result?.state.assignments).toEqual({ alpha: 'c1' })
+    expect(result?.file.workspaces[0]?.assignments).toEqual({ alpha: 'c1' })
     expect(result?.dropped).toBe(2)
   })
 
-  it('trims category names', () => {
-    const result = sanitizeSave({ categories: [{ id: 'c1', name: '  One  ' }], assignments: {} }, known)
-    expect(result?.state.categories).toEqual([{ id: 'c1', name: 'One' }])
+  it('trims workspace and category names', () => {
+    const result = sanitizeSave({
+      workspaces: [row({ name: '  甲  ', categories: [{ id: 'c1', name: '  One  ' }] })],
+    }, known)
+    expect(result?.file.workspaces[0]?.name).toBe('甲')
+    expect(result?.file.workspaces[0]?.categories).toEqual([{ id: 'c1', name: 'One' }])
   })
 })
 
-describe('readMapState / writeMapState', () => {
-  it('seeds a fresh map when the file is missing', async () => {
+describe('readMapFile / writeMapFile', () => {
+  it('treats a missing file as an empty document, not a seeded one', async () => {
     const path = await tempMapPath()
-    const { state, seeded } = await readMapState(path)
-    expect(seeded).toBe(true)
-    expect(state.categories.length).toBeGreaterThan(0)
+    const { file, migrated } = await readMapFile(path)
+    expect(file.workspaces).toEqual([])
+    expect(migrated).toBe(false)
   })
 
-  it('seeds again when the file is unreadable', async () => {
+  it('reads a legacy file as one migrated workspace', async () => {
     const path = await tempMapPath()
-    await writeMapState(path, { version: MAP_VERSION, categories: [], assignments: {} })
-    await writeFile(path, '{"categories":[', 'utf8')
-    const { state, seeded } = await readMapState(path)
-    expect(seeded).toBe(true)
-    expect(state.categories.length).toBeGreaterThan(0)
+    await writeMapFile(path, { version: MAP_VERSION, workspaces: [] })
+    await writeFile(path, JSON.stringify({ version: 2, categories: [{ id: 'a', name: 'A' }], assignments: { alpha: 'a' } }), 'utf8')
+    const { file, migrated } = await readMapFile(path)
+    expect(migrated).toBe(true)
+    expect(file.workspaces).toHaveLength(1)
+    expect(file.workspaces[0]?.name).toBe(DEFAULT_WORKSPACE_NAME)
+  })
+
+  it('degrades an unreadable file to an empty document', async () => {
+    const path = await tempMapPath()
+    await writeMapFile(path, { version: MAP_VERSION, workspaces: [] })
+    await writeFile(path, '{"workspaces":[', 'utf8')
+    expect((await readMapFile(path)).file.workspaces).toEqual([])
   })
 
   it('round-trips through disk and leaves no temp file behind', async () => {
     const path = await tempMapPath()
-    const state = { version: MAP_VERSION, categories: [{ id: 'c1', name: 'One' }], assignments: { alpha: 'c1' } }
-    await writeMapState(path, state)
-    const { state: read, seeded } = await readMapState(path)
-    expect(seeded).toBe(false)
-    expect(read).toEqual(state)
+    const file = { version: MAP_VERSION, workspaces: [{
+      id: 'w1',
+      name: 'One',
+      categories: [{ id: 'c1', name: 'One' }],
+      assignments: { alpha: 'c1' },
+    }] }
+    await writeMapFile(path, file)
+    const { file: read, migrated } = await readMapFile(path)
+    expect(migrated).toBe(false)
+    expect(read).toEqual(file)
     expect(JSON.parse(await readFile(path, 'utf8'))).toMatchObject({ version: MAP_VERSION })
     const siblings = await readdir(join(path, '..'))
     expect(siblings.filter((name) => name.includes('.tmp-'))).toEqual([])

@@ -1,6 +1,6 @@
 /**
- * Pure map assembly: the loaded inventory plus the user map become the payload
- * the panel renders. No filesystem access, so the placement rules are
+ * Pure map assembly: the loaded inventory plus the user's workspaces become the
+ * payload the panel renders. No filesystem access, so the placement rules are
  * unit-testable on their own.
  */
 
@@ -13,17 +13,20 @@ import {
   type MapCategory,
   type MapPayload,
   type MapState,
+  type MapWorkspace,
   type SkillEntry,
   type SkillOrigin,
   type SkillSummaryEntry,
+  type WorkspaceSave,
 } from './payload.ts'
 import { fingerprint } from './fingerprint.ts'
 import { summarize } from './summary.ts'
 import { SEED_CATEGORIES, SEED_ENTRIES } from './taxonomy.ts'
 
 /**
- * The map a fresh install starts from: the shipped seed categories plus the
- * seeded placements. Once this state is written the user owns it.
+ * The classification a fresh install can start from: the shipped seed categories
+ * plus the seeded placements. Used as the built-in fallback for auto classify;
+ * a file no longer seeds itself, so the user confirms the first workspace.
  * @returns a new map state (never shared with the seed tables).
  */
 export function seedMapState(): MapState {
@@ -53,6 +56,42 @@ export function compactDescription(text: string): string {
   return `${head.trimEnd()}…`
 }
 
+/**
+ * Resolve one workspace against the inventory.
+ *
+ * Skills are matched by name; a placement naming a category that no longer
+ * exists is treated as unplaced rather than inventing a category. Category order
+ * is the stored array order (the user's own ordering); members and the unassigned
+ * bucket are name-sorted.
+ * @param state - one workspace's category list and placements.
+ * @param names - the inventory names, already deduped.
+ * @returns the workspace as the panel renders it.
+ */
+export function resolveWorkspace(
+  state: Pick<WorkspaceSave, 'categories' | 'assignments'>,
+  names: readonly string[],
+): Pick<MapWorkspace, 'categories' | 'unassigned'> {
+  const knownCategories = new Set(state.categories.map((category) => category.id))
+  const placedBy = new Map<string, string>()
+  for (const name of names) {
+    const category = state.assignments[name]
+    if (category !== undefined && knownCategories.has(category)) placedBy.set(name, category)
+  }
+
+  const categories: MapCategory[] = state.categories.map((category) => ({
+    id: category.id,
+    name: category.name,
+    skills: names.filter((name) => placedBy.get(name) === category.id).slice().sort((a, b) => a.localeCompare(b)),
+  }))
+
+  const unassigned = names
+    .filter((name) => !placedBy.has(name))
+    .slice()
+    .sort((a, b) => a.localeCompare(b))
+
+  return { categories, unassigned }
+}
+
 /** Input for assembleMap. */
 export interface AssembleMapInput {
   cwd: string
@@ -60,7 +99,8 @@ export interface AssembleMapInput {
   mapPath: string
   /** Every loaded skill, with the description the panel shows under its name. */
   skills: readonly SkillEntry[]
-  state: MapState
+  /** The stored workspaces, in tab order. */
+  workspaces: readonly WorkspaceSave[]
   /** Skill name to the GitHub project it was installed from; omitted when no ledger exists. */
   sources?: Record<string, string>
   /**
@@ -76,12 +116,12 @@ export interface AssembleMapInput {
 /**
  * Assemble the list payload.
  *
- * Skills are matched by name; a placement naming a category that no longer
- * exists is treated as unplaced rather than inventing a category. Category
- * order is the stored array order (the user's own ordering); members and the
- * unassigned bucket are name-sorted. Descriptions ride beside the names rather
- * than inside every category, so one skill name still appears once per list.
- * @param input - inventory entries plus the user map.
+ * The global part (descriptions, summaries, origins, copy coverage) is computed
+ * once over the inventory; each workspace only contributes its resolved
+ * categories and unassigned bucket. Descriptions therefore ride beside the
+ * names rather than inside every workspace, so one skill name still appears once
+ * per payload.
+ * @param input - inventory entries plus the stored workspaces.
  * @returns the payload served to the panel.
  */
 export function assembleMap(input: AssembleMapInput): MapPayload {
@@ -96,23 +136,11 @@ export function assembleMap(input: AssembleMapInput): MapPayload {
   }
   const names = inventory.map((skill) => skill.name)
 
-  const knownCategories = new Set(input.state.categories.map((category) => category.id))
-  const placedBy = new Map<string, string>()
-  for (const name of names) {
-    const category = input.state.assignments[name]
-    if (category !== undefined && knownCategories.has(category)) placedBy.set(name, category)
-  }
-
-  const categories: MapCategory[] = input.state.categories.map((category) => ({
-    id: category.id,
-    name: category.name,
-    skills: names.filter((name) => placedBy.get(name) === category.id).slice().sort((a, b) => a.localeCompare(b)),
+  const workspaces: MapWorkspace[] = input.workspaces.map((workspace) => ({
+    id: workspace.id,
+    name: workspace.name,
+    ...resolveWorkspace(workspace, names),
   }))
-
-  const unassigned = names
-    .filter((name) => !placedBy.has(name))
-    .slice()
-    .sort((a, b) => a.localeCompare(b))
 
   const descriptions: Record<string, string> = {}
   const summaries: Record<string, string> = {}
@@ -162,7 +190,8 @@ export function assembleMap(input: AssembleMapInput): MapPayload {
 
   // Copy coverage: what the hand-written file still owes the inventory, and what
   // it holds for skills that are gone. Both drift whenever a skill is installed,
-  // removed or upgraded, so they are recomputed rather than stored.
+  // removed or upgraded, so they are recomputed rather than stored. The copy is
+  // per inventory, not per workspace: it describes the skill, not where it sits.
   const missing = names.filter((name) => !written.has(name)).slice().sort((a, b) => a.localeCompare(b))
   const stale = Object.keys(input.overrides ?? {}).filter((name) => !knownNames.has(name)).slice().sort((a, b) => a.localeCompare(b))
   changed.sort((a, b) => a.localeCompare(b))
@@ -177,8 +206,8 @@ export function assembleMap(input: AssembleMapInput): MapPayload {
     cwd: input.cwd,
     complete: input.complete,
     total: names.length,
-    categories,
-    unassigned,
+    skills: names.slice().sort((a, b) => a.localeCompare(b)),
+    workspaces,
     descriptions,
     ...(Object.keys(summaries).length > 0 ? { summaries } : {}),
     ...(Object.keys(origins).length > 0 ? { origins } : {}),

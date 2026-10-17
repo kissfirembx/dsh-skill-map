@@ -3,14 +3,16 @@
  * the browser bundle imports this module, so nothing here may reach for node
  * APIs.
  *
- * The map is a user-owned category list over the loaded skill inventory:
- * categories carry a name and an order (the array order), skills are placed by
- * name, and anything unplaced shows up in the unassigned bucket. There is no
- * taxonomy copy beyond the category name.
+ * The map is a user-owned set of workspaces over the loaded skill inventory. A
+ * workspace is one complete way of sorting the same skills: its own ordered
+ * category list plus the placement of every skill into one of them (or into the
+ * unassigned bucket). Switching tabs therefore switches classification scheme,
+ * not a filter — the same skill can sit in different categories in two
+ * workspaces.
  */
 
 /** Current map file schema version. */
-export const MAP_VERSION = 2
+export const MAP_VERSION = 3
 
 /** Placeholder the inventory stores when a SKILL.md carries no description. */
 export const MISSING_DESCRIPTION = '(no description)'
@@ -20,6 +22,22 @@ export const MAX_DESCRIPTION_LENGTH = 200
 
 /** Category id accepted from the panel and written to the map file. */
 export const CATEGORY_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/
+
+/** Workspace id accepted from the panel and written to the map file. */
+export const WORKSPACE_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/
+
+/** Upper bound on workspaces per file (guards a runaway client). */
+export const MAX_WORKSPACES = 20
+
+/** Longest accepted workspace name, in characters. */
+export const MAX_WORKSPACE_NAME = 40
+
+/**
+ * Name a migrated single-map file keeps as its only workspace. Existing users
+ * keep their categories under a tab they will recognise; the panel renames it
+ * like any other workspace.
+ */
+export const DEFAULT_WORKSPACE_NAME = '默认分类'
 
 /** One category as stored: id plus display name. */
 export interface MapCategoryRef {
@@ -32,7 +50,34 @@ export interface MapCategory extends MapCategoryRef {
   skills: string[]
 }
 
-/** The user-owned map: category order plus skill placements. */
+/** One stored workspace: its name plus the classification it carries. */
+export interface WorkspaceSave {
+  id: string
+  name: string
+  categories: MapCategoryRef[]
+  /** Skill name to category id; a skill named here is placed, everything else is unassigned. */
+  assignments: Record<string, string>
+}
+
+/** The map file: the whole workspace list, versioned as one document. */
+export interface MapFile {
+  version: number
+  workspaces: WorkspaceSave[]
+}
+
+/** One workspace as served: members resolved, unplaced skills collected. */
+export interface MapWorkspace {
+  id: string
+  name: string
+  categories: MapCategory[]
+  /** Loaded skills this workspace does not place, name-sorted. */
+  unassigned: string[]
+}
+
+/**
+ * Legacy single-map state (file version 1/2). Only the migration reader uses it;
+ * the panel and the save route speak `MapFile` now.
+ */
 export interface MapState {
   version: number
   categories: MapCategoryRef[]
@@ -52,9 +97,13 @@ export interface MapPayload {
   complete: boolean
   /** Total skills in the inventory. */
   total: number
-  categories: MapCategory[]
-  /** Loaded skills no category claims, name-sorted. */
-  unassigned: string[]
+  /**
+   * Every loaded skill name, sorted. The panel needs the flat list to seed a new
+   * workspace (all skills start there unassigned) and to explain the empty state.
+   */
+  skills: string[]
+  /** Every workspace, in the user's tab order, with placements resolved. */
+  workspaces: MapWorkspace[]
   /**
    * One compacted line per inventory skill, keyed by name. The panel unfolds it
    * under the skill name on hover and searches it alongside the name; a skill
@@ -88,7 +137,7 @@ export interface MapPayload {
    * `descriptions`. Absent when no cache file exists.
    */
   translations?: DescriptionTranslations
-  /** Absolute path of the user map file. */
+  /** Absolute path of the user map file (the workspace document). */
   mapPath: string
 }
 
@@ -166,10 +215,9 @@ export interface SkillEntry {
   repo?: string
 }
 
-/** Body of /api/dsh-skill-map/save. */
+/** Body of /api/dsh-skill-map/save: the whole workspace document. */
 export interface SaveRequest {
-  categories: MapCategoryRef[]
-  assignments: Record<string, string>
+  workspaces: WorkspaceSave[]
 }
 
 /** Result of /api/dsh-skill-map/save. */
@@ -178,4 +226,30 @@ export interface SaveResponse {
   mapPath: string
   /** Placements dropped because the skill is no longer installed. */
   dropped: number
+}
+
+/** Body of /api/dsh-skill-map/workspaces/auto. */
+export interface AutoRequest {
+  /** Place skills inside this existing workspace instead of creating one. */
+  workspaceId?: string
+}
+
+/** Result of /api/dsh-skill-map/workspaces/auto. */
+export interface AutoResponse {
+  ok: true
+  workspaceId: string
+  name: string
+  /**
+   * `create` built a scheme of its own (a new workspace, or a blank one);
+   * `assign` placed skills into categories the user had already built.
+   */
+  mode: 'create' | 'assign'
+  /** Whether the model produced the classification or the built-in table fell back. */
+  source: 'model' | 'seed'
+  /** Skills the pass placed. */
+  assigned: number
+  /** Skills the pass looked at (still unassigned at the time). */
+  total: number
+  /** Present when the model was unavailable or unusable. */
+  warning?: string
 }

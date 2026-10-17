@@ -48,6 +48,37 @@ function readLlm(ctx: Context): LlmFace | undefined {
   return service as LlmFace
 }
 
+/** Structural face of the harness's agent-default-model service. */
+interface AgentDefaultModelFace {
+  currentSelection?(): { provider?: unknown; model?: unknown } | undefined
+}
+
+/**
+ * The model route this profile's own agent runs, as `provider/model`.
+ *
+ * Reading it beats hardcoding a provider: the provider a profile configures is a
+ * moving target (the official route was renamed once already), and a stale route
+ * makes the model call come back empty while the host reports success. Absent or
+ * unusable values fall through to the configured/constant route.
+ * @param ctx - host context; may expose agentDefaultModel.
+ * @returns the route, or undefined when the service is absent or says nothing.
+ */
+export function readDefaultModelRoute(ctx: Context): string | undefined {
+  try {
+    const get = (ctx as { get?: (name: string) => unknown }).get
+    if (typeof get !== 'function') return undefined
+    const service = get.call(ctx, 'agentDefaultModel') as AgentDefaultModelFace | undefined
+    const selection = service?.currentSelection?.()
+    if (selection === null || selection === undefined) return undefined
+    const { provider, model } = selection
+    if (typeof provider !== 'string' || provider === '') return undefined
+    if (typeof model !== 'string' || model === '') return undefined
+    return `${provider}/${model}`
+  } catch {
+    return undefined
+  }
+}
+
 /** Plugin config. */
 export interface Config {
   /** Master switch for the plugin (routes). */
@@ -60,7 +91,7 @@ export interface Config {
   agentsHome?: string
   /**
    * Model route the sync action calls, as `provider/model`. Defaults to the route
-   * this machine's profile already runs, so the action works without setup.
+   * this profile's own agent runs, so the action works without setup.
    */
   syncModel?: string
 }
@@ -94,6 +125,7 @@ function applyImpl(ctx: Context, config?: Config): void {
   // The llm service is taken structurally and optionally: a profile without one
   // still boots and serves the map; only the sync action reports it missing.
   const llm = readLlm(ctx)
+  const syncModel = config?.syncModel ?? readDefaultModelRoute(ctx)
 
   const routes = makeRoutes(ctx, {
     dshHome: home,
@@ -102,7 +134,7 @@ function applyImpl(ctx: Context, config?: Config): void {
     registry: skillCtx.skills,
     activeSessionCwds,
     llm,
-    syncModel: config?.syncModel,
+    syncModel,
     logger: { warn: (error: unknown) => ctx.logger.warn(error) },
   })
 

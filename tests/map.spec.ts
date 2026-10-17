@@ -1,18 +1,22 @@
 import { describe, expect, it } from 'vitest'
 import { assembleMap, compactDescription, seedMapState } from '../src/core/map.ts'
 import { fingerprint } from '../src/core/fingerprint.ts'
-import { MAP_VERSION, MAX_DESCRIPTION_LENGTH, type SkillEntry } from '../src/core/payload.ts'
+import { MAP_VERSION, MAX_DESCRIPTION_LENGTH, type MapCategoryRef, type SkillEntry, type WorkspaceSave } from '../src/core/payload.ts'
 
 /** Shorthand: an inventory entry, description optional. */
 function skill(name: string, description = ''): SkillEntry {
   return { name, description }
 }
 
+/** Shorthand: one stored workspace. */
+function workspace(id: string, name: string, categories: MapCategoryRef[], assignments: Record<string, string>): WorkspaceSave {
+  return { id, name, categories, assignments }
+}
+
 /**
- * Assembly rules: the user map decides category order and membership, a
- * placement that no longer resolves must degrade to the unassigned bucket
- * rather than invent a category, and every listed skill carries at most one
- * compacted description line.
+ * Assembly rules: each workspace decides its own category order and membership,
+ * a placement that no longer resolves degrades to that workspace's unassigned
+ * bucket, and the global copy/description maps are computed once per inventory.
  */
 describe('seedMapState', () => {
   it('carries the shipped categories and placements', () => {
@@ -54,14 +58,10 @@ describe('compactDescription', () => {
 })
 
 describe('assembleMap', () => {
-  const state = {
-    version: MAP_VERSION,
-    categories: [
-      { id: 'b', name: '乙' },
-      { id: 'a', name: '甲' },
-    ],
-    assignments: { zeta: 'b', alpha: 'a' },
-  }
+  const state = workspace('w1', '甲套', [
+    { id: 'b', name: '乙' },
+    { id: 'a', name: '甲' },
+  ], { zeta: 'b', alpha: 'a' })
 
   it('keeps the stored category order and sorts members by name', () => {
     const payload = assembleMap({
@@ -69,16 +69,17 @@ describe('assembleMap', () => {
       complete: true,
       mapPath: 'C:\\home\\.dsh\\skill-map\\map.json',
       skills: [skill('alpha'), skill('zeta'), skill('beta'), skill('gamma')],
-      state,
+      workspaces: [state],
     })
-    expect(payload.categories.map((category) => category.id)).toEqual(['b', 'a'])
-    expect(payload.categories[0]?.skills).toEqual(['zeta'])
-    expect(payload.categories[1]?.skills).toEqual(['alpha'])
+    const shown = payload.workspaces[0]!
+    expect(shown.categories.map((category) => category.id)).toEqual(['b', 'a'])
+    expect(shown.categories[0]?.skills).toEqual(['zeta'])
+    expect(shown.categories[1]?.skills).toEqual(['alpha'])
   })
 
   it('puts every unplaced skill in the unassigned bucket, name-sorted', () => {
-    const payload = assembleMap({ cwd: 'c', complete: true, mapPath: 'm', skills: [skill('gamma'), skill('beta')], state })
-    expect(payload.unassigned).toEqual(['beta', 'gamma'])
+    const payload = assembleMap({ cwd: 'c', complete: true, mapPath: 'm', skills: [skill('gamma'), skill('beta')], workspaces: [state] })
+    expect(payload.workspaces[0]?.unassigned).toEqual(['beta', 'gamma'])
     expect(payload.total).toBe(2)
   })
 
@@ -88,21 +89,52 @@ describe('assembleMap', () => {
       complete: true,
       mapPath: 'm',
       skills: [skill('alpha')],
-      state: { ...state, categories: [{ id: 'b', name: '乙' }] },
+      workspaces: [{ ...state, categories: [{ id: 'b', name: '乙' }] }],
     })
-    expect(payload.categories[0]?.skills).toEqual([])
-    expect(payload.unassigned).toEqual(['alpha'])
+    expect(payload.workspaces[0]?.categories[0]?.skills).toEqual([])
+    expect(payload.workspaces[0]?.unassigned).toEqual(['alpha'])
   })
 
   it('never lists a skill twice, even when the inventory repeats one', () => {
-    const payload = assembleMap({ cwd: 'c', complete: true, mapPath: 'm', skills: [skill('alpha'), skill('alpha', 'second')], state })
-    const listed = [...payload.categories.flatMap((category) => category.skills), ...payload.unassigned]
+    const payload = assembleMap({ cwd: 'c', complete: true, mapPath: 'm', skills: [skill('alpha'), skill('alpha', 'second')], workspaces: [state] })
+    const listed = [
+      ...(payload.workspaces[0]?.categories.flatMap((category) => category.skills) ?? []),
+      ...(payload.workspaces[0]?.unassigned ?? []),
+    ]
     expect(listed).toEqual(['alpha'])
     expect(payload.total).toBe(1)
   })
 
+  it('resolves each workspace independently over the same inventory', () => {
+    const other = workspace('w2', '乙套', [{ id: 'x', name: '另一套' }], { beta: 'x' })
+    const payload = assembleMap({
+      cwd: 'c',
+      complete: true,
+      mapPath: 'm',
+      skills: [skill('alpha'), skill('beta')],
+      workspaces: [state, other],
+    })
+    expect(payload.workspaces.map((entry) => entry.id)).toEqual(['w1', 'w2'])
+    expect(payload.workspaces[0]?.categories[1]?.skills).toEqual(['alpha'])
+    expect(payload.workspaces[0]?.unassigned).toEqual(['beta'])
+    expect(payload.workspaces[1]?.categories[0]?.skills).toEqual(['beta'])
+    expect(payload.workspaces[1]?.unassigned).toEqual(['alpha'])
+  })
+
+  it('serves a name-sorted flat skill list for seeding a new workspace', () => {
+    const payload = assembleMap({
+      cwd: 'c',
+      complete: true,
+      mapPath: 'm',
+      skills: [skill('zeta'), skill('alpha', 'A')],
+      workspaces: [],
+    })
+    expect(payload.skills).toEqual(['alpha', 'zeta'])
+    expect(payload.workspaces).toEqual([])
+  })
+
   it('carries the completeness flag and map path through', () => {
-    const payload = assembleMap({ cwd: 'c', complete: false, mapPath: 'M', skills: [], state })
+    const payload = assembleMap({ cwd: 'c', complete: false, mapPath: 'M', skills: [], workspaces: [state] })
     expect(payload.complete).toBe(false)
     expect(payload.mapPath).toBe('M')
     expect(payload.total).toBe(0)
@@ -114,7 +146,7 @@ describe('assembleMap', () => {
       complete: true,
       mapPath: 'm',
       skills: [skill('alpha', 'drafts copy'), skill('zeta', 'multi\nline copy'), skill('beta')],
-      state,
+      workspaces: [state],
     })
     expect(payload.descriptions).toEqual({
       alpha: 'drafts copy',
@@ -128,7 +160,7 @@ describe('assembleMap', () => {
       complete: true,
       mapPath: 'm',
       skills: [skill('alpha', '(no description)'), skill('beta', '   ')],
-      state,
+      workspaces: [state],
     })
     expect(payload.descriptions).toEqual({})
   })
@@ -139,13 +171,13 @@ describe('assembleMap', () => {
       complete: true,
       mapPath: 'm',
       skills: [skill('alpha', 'x'.repeat(MAX_DESCRIPTION_LENGTH * 3))],
-      state,
+      workspaces: [state],
     })
     expect(payload.descriptions.alpha?.endsWith('…')).toBe(true)
   })
 
   it('carries translations only when a language cache has rows', () => {
-    const base = { cwd: 'c', complete: true, mapPath: 'm', skills: [skill('alpha', 'A')], state }
+    const base = { cwd: 'c', complete: true, mapPath: 'm', skills: [skill('alpha', 'A')], workspaces: [state] }
     expect(assembleMap(base).translations).toBeUndefined()
     expect(assembleMap({ ...base, translations: {} }).translations).toBeUndefined()
     expect(assembleMap({ ...base, translations: { zh: { alpha: '甲' } } }).translations).toEqual({ zh: { alpha: '甲' } })
@@ -158,7 +190,7 @@ describe('assembleMap', () => {
  * skill whose inventory entry says nothing about where it came from.
  */
 describe('summaries and origins', () => {
-  const state = { version: MAP_VERSION, categories: [{ id: 'a', name: '甲' }], assignments: {} }
+  const workspaces = [workspace('w1', '甲套', [{ id: 'a', name: '甲' }], {})]
 
   it('serves a one-sentence summary beside the full description', () => {
     const payload = assembleMap({
@@ -166,14 +198,14 @@ describe('summaries and origins', () => {
       complete: true,
       mapPath: 'm',
       skills: [skill('alpha', 'Runs the tests. Then it writes a long report that keeps going.')],
-      state,
+      workspaces,
     })
     expect(payload.summaries?.alpha).toBe('Runs the tests.')
     expect(payload.descriptions?.alpha).toBe('Runs the tests. Then it writes a long report that keeps going.')
   })
 
   it('omits the summaries map when no description survives', () => {
-    const payload = assembleMap({ cwd: 'c', complete: true, mapPath: 'm', skills: [skill('alpha', '(no description)')], state })
+    const payload = assembleMap({ cwd: 'c', complete: true, mapPath: 'm', skills: [skill('alpha', '(no description)')], workspaces })
     expect(payload.summaries).toBeUndefined()
     expect(payload.descriptions).toEqual({})
   })
@@ -184,7 +216,7 @@ describe('summaries and origins', () => {
       complete: true,
       mapPath: 'm',
       skills: [skill('alpha', 'MUST USE when the user wants to look something up on the internet.')],
-      state,
+      workspaces,
       overrides: { alpha: { brief: '全网调研，按平台取内容', detail: '你想知道别人怎么看一件事。' } },
     })
     expect(payload.summaries?.alpha).toBe('全网调研，按平台取内容')
@@ -197,7 +229,7 @@ describe('summaries and origins', () => {
       complete: true,
       mapPath: 'm',
       skills: [skill('alpha', 'Extracts the text. Then it does more.')],
-      state,
+      workspaces,
       overrides: { alpha: { brief: '只写了短简介' } },
     })
     expect(payload.summaries?.alpha).toBe('只写了短简介')
@@ -210,7 +242,7 @@ describe('summaries and origins', () => {
       complete: true,
       mapPath: 'm',
       skills: [skill('alpha', 'A'), skill('beta', 'B')],
-      state,
+      workspaces,
       overrides: { beta: { brief: '乙' }, gone: { brief: '已经删掉的 skill' } },
     })
     expect(payload.copy?.missing).toEqual(['alpha'])
@@ -225,7 +257,7 @@ describe('summaries and origins', () => {
       complete: true,
       mapPath: 'm',
       skills: [skill('alpha', 'A')],
-      state,
+      workspaces,
       overrides: { alpha: { brief: '甲' } },
     })
     expect(payload.copy).toBeUndefined()
@@ -237,7 +269,7 @@ describe('summaries and origins', () => {
       complete: true,
       mapPath: 'm',
       skills: [skill('alpha', 'A rewritten description')],
-      state,
+      workspaces,
       overrides: { alpha: { brief: '甲', from: 'deadbeef' } },
     })
     expect(payload.copy?.changed).toEqual(['alpha'])
@@ -251,7 +283,7 @@ describe('summaries and origins', () => {
       complete: true,
       mapPath: 'm',
       skills: [skill('alpha', 'Same text')],
-      state,
+      workspaces,
       overrides: { alpha: { brief: '甲', from: fingerprint('Same text') } },
     })
     expect(payload.copy).toBeUndefined()
@@ -267,7 +299,7 @@ describe('summaries and origins', () => {
         { name: 'beta', description: 'y', level: 'bundled', provider: '@deepseek-ai/dsh-web-all' },
         { name: 'gamma', description: 'z' },
       ],
-      state,
+      workspaces,
     })
     expect(payload.origins).toEqual({
       alpha: { level: 'project-dsh', project: 'dsh-skill-map' },
@@ -281,13 +313,13 @@ describe('summaries and origins', () => {
       complete: true,
       mapPath: 'm',
       skills: [{ name: 'alpha', description: 'x', level: 'user-dsh', project: '', provider: '' }],
-      state,
+      workspaces,
     })
     expect(payload.origins).toEqual({ alpha: { level: 'user-dsh' } })
   })
 
   it('omits the origins map when no caller supplies a level', () => {
-    const payload = assembleMap({ cwd: 'c', complete: true, mapPath: 'm', skills: [skill('alpha', 'A')], state })
+    const payload = assembleMap({ cwd: 'c', complete: true, mapPath: 'm', skills: [skill('alpha', 'A')], workspaces })
     expect(payload.origins).toBeUndefined()
   })
 
@@ -297,7 +329,7 @@ describe('summaries and origins', () => {
       complete: true,
       mapPath: 'm',
       skills: [{ name: 'alpha', description: 'x', level: 'user-dsh' }],
-      state,
+      workspaces,
       sources: { alpha: 'dontbesilent2025/dbskill' },
     })
     expect(payload.origins).toEqual({ alpha: { level: 'user-dsh', repo: 'dontbesilent2025/dbskill' } })
@@ -309,7 +341,7 @@ describe('summaries and origins', () => {
       complete: true,
       mapPath: 'm',
       skills: [skill('alpha', 'x')],
-      state,
+      workspaces,
       sources: { alpha: 'anthropics/skills' },
     })
     expect(payload.origins).toEqual({ alpha: { repo: 'anthropics/skills' } })
